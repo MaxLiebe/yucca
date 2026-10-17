@@ -1,3 +1,4 @@
+#include <cstdarg>
 // Host test for the BT HID device transport. BTstack is replaced by fakes
 // that record what the transport does; the test feeds it the events a
 // console pairing, a console reconnect and a reconnecting gamepad produce.
@@ -19,13 +20,21 @@ static HCI_STATE g_hci_state = HCI_STATE_OFF;
 HCI_STATE hci_get_state(void) { return g_hci_state; }
 bool hci_can_send_command_packet_now(void) { return true; }
 static std::vector<const hci_cmd_t *> g_cmds;
+const hci_cmd_t hci_write_link_policy_settings = {};
+static int g_policy_handle = -1, g_policy_bits = -1;  // last link policy written
 uint8_t hci_send_cmd(const hci_cmd_t *cmd, ...)
 {
     g_cmds.push_back(cmd);
+    if (cmd == &hci_write_link_policy_settings) {
+        va_list ap;
+        va_start(ap, cmd);
+        g_policy_handle = va_arg(ap, int);
+        g_policy_bits = va_arg(ap, int);
+        va_end(ap);
+    }
     return 0;
 }
 const hci_cmd_t hci_disconnect = {};
-const hci_cmd_t hci_write_link_policy_settings = {};
 const hci_cmd_t hci_qos_setup = {};
 const hci_cmd_t hci_create_connection_cancel = {};
 const hci_cmd_t hci_write_inquiry_scan_type = {};
@@ -505,6 +514,7 @@ static void test_console_master_page()
     CHECK(g_level_at_create == LEVEL_2);  // authenticates with the stored key
     ev_conn_complete(SWITCH, 0x0082, 0);
     CHECK(!s_pads_relaxed);  // we paged: master until the console switches roles
+    CHECK(g_policy_handle == 0x0082 && g_policy_bits == LM_LINK_POLICY_ENABLE_ROLE_SWITCH);  // no sniff
     uint8_t ev[10] = {HCI_EVENT_ROLE_CHANGE, 8, 0};
     put_addr(ev + 3, SWITCH);
     ev[9] = HCI_ROLE_SLAVE;

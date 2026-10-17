@@ -19,7 +19,7 @@ static SettingSpec s_schema[] = {
     {keys::kFaceLayout, "Face buttons", SettingType::Choice, 0, 0, 0, kFaceLayouts, 2, "0", true},
     {keys::kBle, "Look for Bluetooth LE controllers (Stadia, Xbox)", SettingType::Int, 0, 1, 1, nullptr, 0, nullptr,
      true},
-    {keys::kRumble, "Rumble strength (%)", SettingType::Int, 0, 100, 60, nullptr, 0, nullptr, false},
+    {keys::kRumble, "Rumble strength (%)", SettingType::Int, 0, 100, 30, nullptr, 0, nullptr, false},
     {"wii_mirror", "Wii: also press Wii Remote buttons", SettingType::Int, 0, 1, 1, nullptr, 0, nullptr, true},
     {"wiiu_mode", "Wii U: be a Wii Remote + Classic Controller instead of a Pro Controller", SettingType::Int, 0, 1, 0,
      nullptr, 0, nullptr, true},

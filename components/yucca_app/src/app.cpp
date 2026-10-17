@@ -168,7 +168,7 @@ void App::on_target_feedback(const Feedback &feedback)
     target_feedback_ = feedback;
     // Consoles ask for strengths meant for their own pads' motors, which
     // most controllers render much stronger.
-    const float scale = settings_.get_int(keys::kRumble, 60) / 100.f;
+    const float scale = settings_.get_int(keys::kRumble, 30) / 100.f;
     target_feedback_.rumble_left *= scale;
     target_feedback_.rumble_right *= scale;
     if (!menu_open_) {
