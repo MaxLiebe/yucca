@@ -328,6 +328,60 @@ static void test_wiiu_classic_fallback()
     settings.set_int(WiiTarget::kWiiuModeKey, 0);
 }
 
+static void test_bond_follows_identity()
+{
+    // Paired as a Wii Remote with a Wii, then switched to the Wii U.
+    begin_model(WiiTarget::Model::Wii, 0);
+    settings.erase(WiiTarget::kBondKey);
+    g_wm.connected = true;
+    wii.on_input_ready(classic_link());
+    connect_wii();
+    CHECK(settings.get_int(WiiTarget::kBondKey, -1) == WiiTarget::kWiiRemote);
+    g_wm.connected = false;
+    wii.handle_disconnected();
+
+    wii.set_model(WiiTarget::Model::WiiU);
+    fake_reset();
+    g_wm.paired = true;
+    wii.begin(listener, settings);
+    CHECK(g_wm.forget_calls == 1);  // the Wii is forgotten, so the Wii U can sync
+    fake_reset();
+    g_wm.paired = true;
+    settings.set_int(WiiTarget::kBondKey, WiiTarget::kWiiuPro);
+    wii.begin(listener, settings);
+    CHECK(g_wm.forget_calls == 0);  // same console and identity: keep it
+    settings.set_int(WiiTarget::kWiiuModeKey, 1);
+    fake_reset();
+    g_wm.paired = true;
+    wii.begin(listener, settings);
+    CHECK(g_wm.forget_calls == 1);  // Wii U paired with the Pro, now a Remote
+    wii.set_model(WiiTarget::Model::Wii);
+    settings.set_int(WiiTarget::kWiiuModeKey, 0);
+    settings.erase(WiiTarget::kBondKey);
+}
+
+static void test_wiiu_pro_layout_and_release()
+{
+    begin_model(WiiTarget::Model::WiiU, 0);
+    settings.set_int(keys::kFaceLayout, 1);
+    wii.begin(listener, settings);
+    GamepadState s;
+    s.set(Button::South, true);  // Xbox A -> Nintendo A
+    s.set(Button::R1, true);
+    s.set(Button::L3, true);
+    s.r2 = 1.0f;
+    wii.update(s);
+    CHECK(g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_A]);
+    CHECK(g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_R]);
+    CHECK(g_wm.buttons[WIIMOTE_BUTTON_PRO_LSTICK]);
+    CHECK(g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_ZR]);
+    wii.on_input_gone();  // releases everything
+    CHECK(!g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_A] && !g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_ZR]);
+    CHECK(!g_wm.buttons[WIIMOTE_BUTTON_PRO_LSTICK] && !g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_R]);
+    settings.set_int(keys::kFaceLayout, 0);
+    wii.set_model(WiiTarget::Model::Wii);
+}
+
 int main()
 {
     RUN(test_first_run_opens_sync);
@@ -346,5 +400,7 @@ int main()
     RUN(test_wii_identity);
     RUN(test_wiiu_pro_identity_and_mapping);
     RUN(test_wiiu_classic_fallback);
+    RUN(test_bond_follows_identity);
+    RUN(test_wiiu_pro_layout_and_release);
     DONE("target_wii");
 }

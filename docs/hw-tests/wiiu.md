@@ -8,7 +8,7 @@ The Wii U needs Secure Simple Pairing off, so in Wii U mode new controllers pair
 
 | # | Step | Expected | Result |
 | --- | --- | --- | --- |
-| 1 | Erase flash, flash, set the console to Wii U (web page, or Select + Home menu: two LEDs = LED 2), boot | Log: `Secure Simple Pairing off` and `First run: pair the controller now; the Wii U sync window opens afterwards` | |
+| 1 | Erase flash, flash, set the console to Wii U (web page, or the Select + Home menu: LED 2 lit), boot | Log: `Secure Simple Pairing off` and `First run: pair the controller now; the Wii U sync window opens afterwards` | |
 | 2 | Put the controller in pairing mode (see `docs/controllers.md`) | Log: `Gamepad ready: ...`, then `No Wii U paired yet: opening the sync window` | |
 | 3 | Press SYNC on the Wii U (console front, or HOME Menu > Controller Settings > Pair) within 20 s | Log: `Wii U connected` (possibly after `reconnecting as master`). Controller shows a player LED | |
 | 4 | Wii U Menu and HOME Menu: d-pad, A, B, HOME | Menus respond | |

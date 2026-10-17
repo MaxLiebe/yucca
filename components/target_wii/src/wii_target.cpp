@@ -101,9 +101,18 @@ WiiTarget::WiiTarget()
 {
 }
 
+WiiTarget::Identity WiiTarget::identity() const
+{
+    if (model_ == Model::Wii) {
+        return kWiiRemote;
+    }
+    return pro_ ? kWiiuPro : kWiiuRemote;
+}
+
 void WiiTarget::begin(TargetListener &listener, Settings &settings)
 {
     listener_ = &listener;
+    settings_ = &settings;
     const auto layout = static_cast<FaceLayout>(settings.get_int(keys::kFaceLayout, 0));
     mapper_.set_layout(layout);
     pro_mapper_.set_layout(layout);
@@ -122,6 +131,15 @@ void WiiTarget::begin(TargetListener &listener, Settings &settings)
     cfg.external_stack = true;
     if (wiimote_init(&cfg) != ESP_OK) {
         ESP_LOGE(TAG, "WiimoteAnything failed to start");
+    }
+
+    // The library remembers one console. If it was paired as another console
+    // or controller (console menu, wiiu_mode), it is the wrong one: forget it
+    // so the sync window opens for this console.
+    const int32_t bond = settings.get_int(kBondKey, -1);
+    if (wiimote_has_paired_host() && bond >= 0 && bond != identity()) {
+        ESP_LOGI(TAG, "The remembered console was paired as another device; pairing with the %s again.", name());
+        wiimote_forget_host();
     }
 
     if (wiimote_has_paired_host()) {
@@ -369,6 +387,10 @@ void WiiTarget::handle_connected()
     auto_reconnect_until_ms_ = -1;
     repage_at_ms_ = -1;
     ESP_LOGI(TAG, "%s connected", name());
+    if (settings_ != nullptr && settings_->get_int(kBondKey, -1) != identity()) {
+        settings_->set_int(kBondKey, identity());
+        settings_->commit();
+    }
     if (listener_ != nullptr) {
         listener_->on_target_connected();
     }

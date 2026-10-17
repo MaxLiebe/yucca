@@ -43,6 +43,10 @@ public:
     // Settings keys (also shown in the web settings page).
     static constexpr const char *kMirrorKey = "wii_mirror";  // int: also press Wii Remote buttons
     static constexpr const char *kWiiuModeKey = "wiiu_mode";  // int: 0 Pro Controller, 1 Wii Remote + Classic
+    // Internal: which identity the remembered console was paired as (Identity).
+    static constexpr const char *kBondKey = "wii_bond";
+    enum Identity : int32_t { kWiiRemote = 0, kWiiuPro = 1, kWiiuRemote = 2 };
+    Identity identity() const;
 
     // WiimoteAnything callbacks (public for the C trampolines and host tests).
     void handle_connected();
@@ -61,6 +65,7 @@ private:
 
     PacketHandler fallback_ = nullptr;
     TargetListener *listener_ = nullptr;
+    Settings *settings_ = nullptr;
     Mapper mapper_;
     Mapper pro_mapper_;
     Model model_ = Model::Wii;
