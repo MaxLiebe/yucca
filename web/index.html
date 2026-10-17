@@ -3,64 +3,203 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>YUCCA installer</title>
-  <meta name="description" content="Install YUCCA on an ESP32 from your browser and choose your console.">
+  <title>YUCCA: set up your controller adapter</title>
+  <meta name="description" content="Turn an ESP32 board into a wireless adapter for your Wii, Wii U, Switch or Switch 2. Set it up from your browser.">
+  <meta name="color-scheme" content="light dark">
   <link rel="stylesheet" href="style.css">
   <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
 </head>
 <body>
-  <header>
-    <h1>YUCCA</h1>
-    <p class="tagline">Your Universal Cross-platform Controller Adapter. Play with almost any Bluetooth controller on your console, through an ESP32.</p>
+  <header class="bar">
+    <a class="wordmark" href="#top">YUCCA</a>
+    <nav aria-label="Sections">
+      <a href="#choose">Setup</a>
+      <a href="#works">What works</a>
+      <a href="https://github.com/MaxLiebe/yucca">GitHub</a>
+    </nav>
   </header>
 
-  <main>
-    <section id="unsupported" class="notice" hidden>
-      Your browser can't talk to USB serial devices. Use Chrome or Edge on a computer.
+  <main id="top">
+    <section class="hero">
+      <h1>Play with the controller you like, on a Wii or a Switch.</h1>
+      <p class="lede">YUCCA turns a small ESP32 board into a wireless adapter. Your controller talks to the board, and the board acts like a controller your console already knows. You set it up right here, in your browser.</p>
+      <div class="actions">
+        <a class="button primary" href="#choose">Set up my adapter</a>
+        <a class="quiet-link" href="#works">Which controllers work?</a>
+      </div>
+      <figure class="chain" id="hero-chain" aria-label="Your controller connects to the YUCCA board, which connects to your console"></figure>
     </section>
 
-    <section>
-      <h2><span class="step">1</span> Install</h2>
-      <p>Plug in an <strong>original ESP32</strong> board (ESP32-WROOM-32 or WROVER; the S3, C3 and C6 can't talk to a Wii or Switch) with a data USB cable, then:</p>
-      <esp-web-install-button manifest="firmware/manifest.json">
-        <button slot="activate" class="primary">Install YUCCA</button>
-        <span slot="unsupported">Use Chrome or Edge on a computer to install.</span>
-        <span slot="not-allowed">Open this page over https to install.</span>
-      </esp-web-install-button>
-      <p class="hint" id="version-line">Checking for the latest release…</p>
-      <p class="hint">Nothing in the list? Install the USB driver for your board (CP210x or CH340), or hold the BOOT button while you click Install.</p>
+    <section id="choose" class="chapter">
+      <header class="chapter-head">
+        <span class="num" aria-hidden="true">1</span>
+        <div>
+          <h2>What are you connecting?</h2>
+          <p>Pick your console and controller. The steps below change to match.</p>
+        </div>
+      </header>
+      <h3 class="pick-title" id="console-title">Your console</h3>
+      <div class="picker picker-consoles" id="console-picker" role="radiogroup" aria-labelledby="console-title"></div>
+      <p class="later">PlayStation 4 and 5 come later.</p>
+      <h3 class="pick-title" id="controller-title">Your controller</h3>
+      <div class="picker picker-controllers" id="controller-picker" role="radiogroup" aria-labelledby="controller-title"></div>
+      <p class="combo" id="combo" aria-live="polite"></p>
     </section>
 
-    <section>
-      <h2><span class="step">2</span> Settings</h2>
-      <p>Choose your console and options. Close any other serial monitor first.</p>
-      <button id="connect" class="primary">Connect to YUCCA</button>
-      <p id="status" class="hint"></p>
-      <form id="settings" hidden></form>
-      <div id="device" hidden>
-        <button id="sync" type="button">Pair with console</button>
-        <button id="forget" type="button" class="danger">Forget everything</button>
+    <section id="install" class="chapter">
+      <header class="chapter-head">
+        <span class="num" aria-hidden="true">2</span>
+        <div>
+          <h2>Put YUCCA on the board</h2>
+          <p>You do this once. It takes a minute or two.</p>
+        </div>
+      </header>
+
+      <div class="need">
+        <figure class="need-art" id="laptop-art"></figure>
+        <div>
+          <h3>You'll need</h3>
+          <ul class="need-list">
+            <li><b>An ESP32 board.</b> Look for "ESP32-WROOM-32" or "ESP32 DevKit" when you buy one. Newer boards called S3, C3 or C6 won't work, because they can't talk to a Wii or Switch.</li>
+            <li><b>A USB cable that carries data.</b> Some cables only charge. If your board doesn't show up, try another cable.</li>
+            <li><b>Chrome or Edge on a computer.</b> Phones, tablets and Safari can't install it.</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="alert" id="unsupported" hidden>This browser can't install YUCCA. Open this page in Chrome or Edge on a Windows, Mac, Linux or ChromeOS computer.</p>
+
+      <ol class="steps">
+        <li>Plug the board into this computer.</li>
+        <li>Click <b>Install YUCCA</b>. A small window opens with a list. Pick your board (it's often called "CP2102", "CH340" or "USB Serial") and click <b>Connect</b>.</li>
+        <li>Choose <b>Install</b>. If it asks to erase the board, say yes. Keep the board plugged in until it says it's done.</li>
+      </ol>
+
+      <div class="install-row">
+        <esp-web-install-button manifest="firmware/manifest.json">
+          <button slot="activate" class="button primary">Install YUCCA</button>
+          <span slot="unsupported"></span>
+          <span slot="not-allowed" class="alert">Open this page over https to install.</span>
+        </esp-web-install-button>
+        <p class="hint" id="version-line">Checking for the latest version…</p>
+      </div>
+
+      <details class="help">
+        <summary>The list is empty, or my board isn't in it</summary>
+        <p>Your computer may need a driver for the board's USB chip. Look at the small chip next to the USB port, then install the driver that matches: <a href="https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers">CP210x</a> or <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html">CH340</a>. Restart the browser afterwards.</p>
+        <p>Still nothing? Try a different cable or USB port.</p>
+      </details>
+      <details class="help">
+        <summary>It gets stuck on "Connecting"</summary>
+        <div class="help-art">
+          <figure id="boot-art"></figure>
+          <p>Hold the <b>BOOT</b> button on the board, click <b>Install YUCCA</b> again, and let go once the progress bar starts moving.</p>
+        </div>
+      </details>
+    </section>
+
+    <section id="setup" class="chapter">
+      <header class="chapter-head">
+        <span class="num" aria-hidden="true">3</span>
+        <div>
+          <h2>Tell YUCCA your console</h2>
+          <p>Connect to the board again to choose your console and see what it's connected to. In the list, pick the same board as before.</p>
+        </div>
+      </header>
+
+      <div class="connect-row">
+        <button id="connect" class="button primary" type="button">Connect to YUCCA</button>
+        <p id="status" class="hint" role="status"></p>
+      </div>
+
+      <div id="device" class="device" hidden>
+        <div class="panel">
+          <div class="chain live" id="live-chain"></div>
+          <p class="fw" id="fw"></p>
+        </div>
+
+        <div class="suggest" id="suggest" hidden>
+          <p id="suggest-text"></p>
+          <button id="suggest-apply" class="button primary" type="button"></button>
+        </div>
+
+        <div class="settings">
+          <div class="field">
+            <span class="field-label" id="console-setting-label">Console</span>
+            <div class="segmented" id="console-setting" role="radiogroup" aria-labelledby="console-setting-label"></div>
+          </div>
+          <div id="options"></div>
+        </div>
+
+        <details class="help">
+          <summary>Something isn't working</summary>
+          <div class="trouble">
+            <div>
+              <p><b>Pair with the console again.</b> Opens YUCCA's pairing window, for example to use it on another console.</p>
+              <button id="sync" type="button" class="button">Pair again</button>
+            </div>
+            <div>
+              <p><b>Start over.</b> YUCCA forgets your console and every controller. You'll pair both again.</p>
+              <button id="forget" type="button" class="button danger">Forget everything</button>
+            </div>
+          </div>
+        </details>
       </div>
     </section>
 
-    <section>
-      <h2><span class="step">3</span> Pair</h2>
-      <ol>
-        <li>Put your controller in pairing mode (<a href="https://github.com/MaxLiebe/yucca/blob/main/docs/controllers.md">how, per controller</a>).</li>
-        <li>The first time, YUCCA then opens the console's pairing window by itself. On a Wii or Wii U press the red SYNC button; on a Switch open <em>Controllers → Change Grip/Order</em>.</li>
-        <li>Afterwards, turning the controller on is enough.</li>
-      </ol>
-      <p class="hint">No buttons needed on the ESP32: hold <kbd>Select</kbd> + <kbd>Home</kbd> for 3 s to pick the console from the controller, or <kbd>Select</kbd> + <kbd>Start</kbd> for 3 s to pair with a console again.</p>
+    <section id="pair" class="chapter">
+      <header class="chapter-head">
+        <span class="num" aria-hidden="true">4</span>
+        <div>
+          <h2>Pair your controller, then your console</h2>
+          <p>Only the first time. Keep YUCCA powered, from the console's USB port or a phone charger.</p>
+        </div>
+      </header>
+
+      <div class="moment">
+        <figure class="moment-art" id="pair-controller-art"></figure>
+        <div>
+          <h3 id="pair-controller-title">First, your controller</h3>
+          <ol class="moment-steps" id="pair-controller-steps"></ol>
+          <p class="live-note" id="live-controller" hidden></p>
+        </div>
+      </div>
+
+      <div class="moment">
+        <figure class="moment-art" id="pair-console-art"></figure>
+        <div>
+          <h3 id="pair-console-title">Then, your console</h3>
+          <p class="moment-lead" id="pair-console-lead"></p>
+          <ol class="moment-steps" id="pair-console-steps"></ol>
+          <p class="live-note" id="live-console" hidden></p>
+        </div>
+      </div>
+
+      <div class="after">
+        <h3>After that</h3>
+        <p>Turn on your controller and it connects by itself. You don't need this page again unless you want to change something.</p>
+        <dl class="shortcuts" id="shortcuts"></dl>
+      </div>
     </section>
 
-    <section>
-      <h2>What works</h2>
-      <div id="matrix"><p class="hint">Loading…</p></div>
+    <section id="works" class="chapter">
+      <header class="chapter-head plain">
+        <div>
+          <h2>What works</h2>
+          <p id="works-intro">Loading…</p>
+        </div>
+      </header>
+      <div id="works-list"></div>
+      <details class="help" id="matrix-wrap" hidden>
+        <summary>See every controller and console</summary>
+        <div id="matrix"></div>
+      </details>
     </section>
   </main>
 
-  <footer>
-    <a href="https://github.com/MaxLiebe/yucca">Source on GitHub</a> · MIT licence
+  <footer class="foot">
+    <p>YUCCA is free and open source, under the MIT licence.</p>
+    <p><a href="https://github.com/MaxLiebe/yucca">Source code</a> · <a href="https://github.com/MaxLiebe/yucca/issues">Report a problem</a></p>
   </footer>
 
   <script type="module" src="app.js"></script>
