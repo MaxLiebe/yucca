@@ -20,7 +20,9 @@ idf.py build flash monitor
 ```
 
 1. Pair your controller ([how, per controller](docs/controllers.md)). The log shows `Gamepad ready`.
-2. With no console paired yet, the console's sync window opens by itself. On a Wii, press the red **SYNC** button within 20 s.
+2. Pick your console (web page, or the console menu below; the default is Wii). With no console paired yet, YUCCA opens the console's sync window by itself:
+   - **Wii / Wii U:** press the console's **SYNC** button within 20 s.
+   - **Switch / Switch 2:** open **Controllers > Change Grip/Order** within 30 s, then press L + R when the player light comes on.
 3. After that, turning the controller on is enough: YUCCA reconnects to it, then to the console.
 
 | Gesture | Effect |
@@ -30,11 +32,15 @@ idf.py build flash monitor
 | Hold **BOOT** 5 s | Forget the console and all controllers |
 | Hold **Select + Home** 3 s | Console menu: the player LEDs show the console (1 Wii, 2 Wii U, 3 Switch, 4 Switch 2), d-pad left/right to change, A to confirm (YUCCA restarts), Select to cancel |
 
+Controllers without player LEDs (Stadia, some 8BitDo modes) give no feedback in the console menu, and a single Joy-Con has no Select + Home: use the web page's settings or the BOOT button there.
+
 Settings can also be changed over USB serial (115200): `yucca_info` shows everything, `yucca_set <key> <value>` changes it.
+
+Nothing has been tested on real consoles yet (see the table): please report what works and what doesn't with the "Hardware test report" issue template.
 
 ## What works
 
-Generated from [`support.yaml`](support.yaml). The Wii column already works in [wii-gamepad-adapter](https://github.com/MaxLiebe/wii-gamepad-adapter); it turns green here once ported and retested.
+Generated from [`support.yaml`](support.yaml). A cell turns green once someone has tested it on real hardware with the script in [`docs/hw-tests/`](docs/hw-tests/).
 
 <!-- support-matrix:start -->
 | Controller | Wii | Wii U | Switch | Switch 2 | PS4 | PS5 |
