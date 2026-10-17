@@ -1,0 +1,36 @@
+# What works, per controller x console. Source of truth for the README table
+# and the website. Validate and render with: python3 tools/support_matrix.py
+#
+# A cell not listed under `cells` is `planned` (v1 console) or `post-v1`.
+# Statuses: planned | in-progress | works-in-ci | verified | blocked | post-v1
+# Only a human hardware test report may set `verified` (fill verified_by and firmware).
+
+consoles:
+  - {id: wii, name: Wii, milestone: v1}
+  - {id: wiiu, name: Wii U, milestone: v1}
+  - {id: switch, name: Switch, milestone: v1}
+  - {id: switch2, name: Switch 2, milestone: v1}
+  - {id: ps4, name: PS4, milestone: post-v1}
+  - {id: ps5, name: PS5, milestone: post-v1}
+
+controllers:
+  - {id: ds3, name: PlayStation 3 controller}
+  - {id: ds4, name: DualShock 4}
+  - {id: dualsense, name: DualSense}
+  - {id: wiimote, name: Wii Remote + extensions}
+  - {id: wiiu_pro, name: Wii U Pro Controller}
+  - {id: switch_pro, name: Switch Pro Controller}
+  - {id: joycon, name: Switch Joy-Con}
+  - {id: joycon2, name: Switch 2 Joy-Con}
+  - {id: 8bitdo, name: 8BitDo controllers}
+  - {id: stadia, name: Stadia controller}
+
+cells: []
+# Example:
+#  - controller: dualsense
+#    console: wii
+#    status: verified
+#    features: {buttons: yes, rumble: yes, leds: yes, motion: no}
+#    verified_by: MaxLiebe
+#    firmware: 0.1.0
+#    notes: Classic Controller mode
