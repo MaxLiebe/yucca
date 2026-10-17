@@ -36,6 +36,7 @@ Feedback s_feedback;
 int64_t s_rumble_sent_ms;
 // Scanning can only start once Bluepad32 finished its setup.
 bool s_init_done;
+void (*s_console_hook)();
 bool s_want_scan;
 
 void apply_scanning()
@@ -190,6 +191,13 @@ const uni_property_t *platform_get_property(uni_property_idx_t) { return nullptr
 
 void platform_on_oob_event(uni_platform_oob_event_t, void *) {}
 
+void platform_register_console_cmds(void)
+{
+    if (s_console_hook != nullptr) {
+        s_console_hook();
+    }
+}
+
 struct uni_platform s_platform = {
     .name = "YUCCA",
     .init = platform_init,
@@ -203,7 +211,7 @@ struct uni_platform s_platform = {
     .get_property = platform_get_property,
     .on_oob_event = platform_on_oob_event,
     .device_dump = nullptr,
-    .register_console_cmds = nullptr,
+    .register_console_cmds = platform_register_console_cmds,
 };
 }  // namespace
 
@@ -219,6 +227,7 @@ void Bluepad32Input::begin(InputListener &listener)
 {
     s_listener = &listener;
     s_ble = ble_;
+    s_console_hook = console_hook_;
     uni_platform_set_custom(&s_platform);
     uni_init(0, nullptr);
 }
