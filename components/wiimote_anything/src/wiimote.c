@@ -285,7 +285,10 @@ esp_err_t wiimote_init(const wiimote_config_t *config)
     wiimote_proto_init(s_proto, config->extension, battery);
     wiimote_hw_init(config->pins);
     wiimote_bt_set_external_stack(config->external_stack);
-    err = wiimote_bt_start();
+    err = wiimote_bt_set_identity(config->extension == WIIMOTE_EXT_WIIU_PRO, config->disable_ssp);
+    if (err == ESP_OK) {
+        err = wiimote_bt_start();
+    }
     if (err != ESP_OK) {
         /* Nothing runs yet: release the state so wiimote_init() can retry. */
         ESP_LOGE(TAG, "Bluetooth start failed: %s", esp_err_to_name(err));
@@ -403,6 +406,10 @@ esp_err_t wiimote_set_extension(wiimote_extension_t extension)
     if (s_proto == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
+    /* The Pro Controller is a different device (name, product ID): no hot swap. */
+    if ((extension == WIIMOTE_EXT_WIIU_PRO) != (s_proto->ext.type == WIIMOTE_EXT_WIIU_PRO)) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
     wiimote_lock();
     wiimote_proto_set_extension(s_proto, extension);
     wiimote_unlock();
@@ -428,31 +435,20 @@ esp_err_t wiimote_set_button(wiimote_button_t button, bool pressed)
 
 esp_err_t wiimote_set_axis(wiimote_axis_t axis, float value)
 {
-    int raw;
+    int raw, lo, hi, center;
+    bool trigger;
     if (s_proto == NULL || axis >= WIIMOTE_AXIS_COUNT) {
         return ESP_ERR_INVALID_ARG;
     }
-    switch (axis) {
-    case WIIMOTE_AXIS_NUNCHUK_X:
-    case WIIMOTE_AXIS_NUNCHUK_Y:
-        raw = stick_from_unit(value, 0, 255, 128);
-        break;
-    case WIIMOTE_AXIS_CLASSIC_LX:
-    case WIIMOTE_AXIS_CLASSIC_LY:
-        raw = stick_from_unit(value, 0, 63, 32);
-        break;
-    case WIIMOTE_AXIS_CLASSIC_RX:
-    case WIIMOTE_AXIS_CLASSIC_RY:
-        raw = stick_from_unit(value, 0, 31, 16);
-        break;
-    case WIIMOTE_AXIS_CLASSIC_LT:
-    case WIIMOTE_AXIS_CLASSIC_RT:
+    if (wiimote_ext_axis_range(s_proto->ext.type, axis, &lo, &hi, &center, &trigger) != 0) {
+        return ESP_ERR_NOT_SUPPORTED; /* e.g. LT/RT on the Pro Controller (ZL/ZR are buttons) */
+    }
+    if (trigger) {
         if (value < 0.f) value = 0.f;
         if (value > 1.f) value = 1.f;
-        raw = (int)(value * 31.f + 0.5f);
-        break;
-    default:
-        return ESP_ERR_INVALID_ARG;
+        raw = (int)(value * (float)hi + 0.5f);
+    } else {
+        raw = stick_from_unit(value, lo, hi, center);
     }
     wiimote_lock();
     wiimote_proto_set_axis_raw(s_proto, axis, raw);

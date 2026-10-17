@@ -64,6 +64,7 @@ static const char *TAG = "wiimote_bt";
 #define WM_TLV_TAG_HOST 0x57694948u /* 'WiIH' */
 
 #define WM_COD 0x002504u
+#define WM_COD_WIIU_PRO 0x002508u /* limited-discoverable, peripheral, gamepad */
 #define WM_COD_MAJOR_MASK 0x001f00u
 #define WM_COD_MAJOR_PERIPHERAL 0x000500u
 #define WM_COD_WII 0x000448u
@@ -72,7 +73,13 @@ static const char *TAG = "wiimote_bt";
 #define WM_PAGE_TIMEOUT_CONSOLE 0x2000
 #define WM_PAGE_TIMEOUT_DEFAULT 0x6000
 
-static const char k_local_name[] = "Nintendo RVL-CNT-01";
+static const char k_name_remote[] = "Nintendo RVL-CNT-01";
+static const char k_name_wiiu_pro[] = "Nintendo RVL-CNT-01-UC";
+/* Identity: a Wii Remote, or a Wii U Pro Controller (wiimote_bt_set_identity). */
+static const char *k_local_name = k_name_remote;
+static uint32_t s_cod = WM_COD;
+static uint16_t s_pnp_product = 0x0306;
+static bool s_disable_ssp;
 
 /* Real RVL-CNT-01 HID report descriptor (Dolphin / hcidump of attribute 0x0206). */
 static const uint8_t k_rvl_hid_descriptor[] = {
@@ -613,7 +620,7 @@ static void register_sdp_records(void)
 
     s_pnp_record_handle = sdp_create_service_record_handle();
     memset(s_pnp_record, 0, sizeof(s_pnp_record));
-    device_id_create_sdp_record(s_pnp_record, s_pnp_record_handle, DEVICE_ID_VENDOR_ID_SOURCE_USB, 0x057e, 0x0306,
+    device_id_create_sdp_record(s_pnp_record, s_pnp_record_handle, DEVICE_ID_VENDOR_ID_SOURCE_USB, 0x057e, s_pnp_product,
                                 0x0600);
     sdp_register_service(s_pnp_record);
 
@@ -627,7 +634,7 @@ static void register_sdp_records(void)
 static void apply_identity(void)
 {
     gap_set_local_name(k_local_name);
-    gap_set_class_of_device(WM_COD);
+    gap_set_class_of_device(s_cod);
     gap_set_allow_role_switch(true);
     gap_set_default_link_policy_settings(LM_LINK_POLICY_ENABLE_ROLE_SWITCH | LM_LINK_POLICY_ENABLE_SNIFF_MODE);
     if (s_fallback == NULL) {
@@ -1501,9 +1508,34 @@ void wiimote_btstack_tune_link(hci_con_handle_t handle, const bd_addr_t addr)
     queue_qos(handle, WM_QOS_GUARANTEED);
 }
 
+esp_err_t wiimote_bt_set_identity(bool wiiu_pro, bool disable_ssp)
+{
+    k_local_name = wiiu_pro ? k_name_wiiu_pro : k_name_remote;
+    s_cod = wiiu_pro ? WM_COD_WIIU_PRO : WM_COD;
+    s_pnp_product = wiiu_pro ? 0x0330 : 0x0306;
+    s_disable_ssp = disable_ssp;
+    return ESP_OK;
+}
+
 void wiimote_bt_set_external_stack(bool external)
 {
     s_external_stack = external;
+}
+
+/* SSP is written to the controller during power-on, so it can only be
+ * turned off before then. */
+static esp_err_t apply_ssp_setting(void)
+{
+    if (!s_disable_ssp) {
+        return ESP_OK;
+    }
+    if (hci_get_state() != HCI_STATE_OFF) {
+        ESP_LOGE(TAG, "disable_ssp: Bluetooth is already on; call wiimote_init() before the host stack");
+        return ESP_ERR_INVALID_STATE;
+    }
+    gap_ssp_set_enable(0);
+    ESP_LOGI(TAG, "Secure Simple Pairing off (legacy PIN pairing only)");
+    return ESP_OK;
 }
 
 esp_err_t wiimote_bt_start(void)
@@ -1520,6 +1552,9 @@ esp_err_t wiimote_bt_start(void)
         }
         l2cap_init();
         sdp_init();
+        if (apply_ssp_setting() != ESP_OK) {
+            return ESP_ERR_INVALID_STATE;
+        }
         setup_services();
         if (hci_power_control(HCI_POWER_ON) != 0) {
             return ESP_FAIL;
@@ -1534,6 +1569,9 @@ esp_err_t wiimote_bt_start(void)
 #endif
     }
 
+    if (apply_ssp_setting() != ESP_OK) {
+        return ESP_ERR_INVALID_STATE;
+    }
     if (on_btstack_thread_or_not_running()) {
         /* Typical: called after btstack_init() and before the host stack
          * (uni_init) powers HCI on. l2cap_init / sdp_init are idempotent

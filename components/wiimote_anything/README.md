@@ -226,6 +226,12 @@ Nunchuk C and Z are `WIIMOTE_BUTTON_NUNCHUK_C` / `WIIMOTE_BUTTON_NUNCHUK_Z`. Cla
 
 `WIIMOTE_EXT_MOTION_PLUS_NUNCHUK` presents a nunchuk until the game writes `0x05` to `0xA600FE`. After that, frames alternate. A normal nunchuk's `0x55` at `0xA400F0` does not look like a MotionPlus deactivate; that only happens while MotionPlus is active.
 
+### Wii U Pro Controller
+
+`WIIMOTE_EXT_WIIU_PRO` makes the ESP32 a Wii U Pro Controller (`Nintendo RVL-CNT-01-UC`, product ID `0x0330`) instead of a Wii Remote. Choose it in `wiimote_config_t.extension`; `wiimote_set_extension` cannot switch to or from it. Buttons are the `WIIMOTE_BUTTON_CLASSIC_*` values plus `WIIMOTE_BUTTON_PRO_LSTICK` / `PRO_RSTICK`. Sticks are the `WIIMOTE_AXIS_CLASSIC_*` sticks at 12 bits; ZL and ZR are buttons. Battery follows `wiimote_set_battery`.
+
+A Wii U will not pair with a controller that offers Secure Simple Pairing, so set `wiimote_config_t.disable_ssp` (BTstack backend only). It is radio-wide: a shared host stack can then pair new gamepads only with a PIN. Protocol notes and open questions: YUCCA's `docs/platforms/wiiu.md`.
+
 ## MPU6050 wiring
 
 GY-521 (or any MPU6050) to the original ESP32:
