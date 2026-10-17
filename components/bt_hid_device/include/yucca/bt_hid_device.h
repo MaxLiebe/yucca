@@ -72,6 +72,8 @@ void forget();
 bool link_is_master();
 // HCI reason of the last console disconnect (0 when none).
 uint8_t last_disconnect_reason();
+// Longest time the radio had no room for an input report (diagnostics).
+uint32_t longest_block_ms();
 // Send pending replies now instead of at the next report tick.
 void flush();
 // For a gamepad link: ESP32 master, no sniff, short poll interval.
