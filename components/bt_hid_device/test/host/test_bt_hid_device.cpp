@@ -493,8 +493,10 @@ static void test_console_master_page()
     Profile p2 = kProfile;
     p2.console_master = true;
     begin(p2, g_listener);
+    g_gap_level = LEVEL_2;
     connect();
     CHECK(connecting() && g_role_switch && g_page_timeout == 0x2000);
+    CHECK(g_level_at_create == LEVEL_2);  // authenticates with the stored key
     ev_conn_complete(SWITCH, 0x0082, 0);
     CHECK(!s_pads_relaxed);  // we paged: master until the console switches roles
     uint8_t ev[10] = {HCI_EVENT_ROLE_CHANGE, 8, 0};
@@ -519,15 +521,24 @@ static void test_console_link_key_stored()
     CHECK(g_keys_stored == 0);  // all-zero key: ignored
     ev[8] = 0x5a;
     emit(ev, sizeof(ev));
+    CHECK(g_keys_stored == 0);  // not during the handshake: written later
+    s_key_timer.process(&s_key_timer);
     CHECK(g_keys_stored == 1 && g_stored_type == UNAUTHENTICATED_COMBINATION_KEY_GENERATED_FROM_P192);
     ev[24] = CHANGED_COMBINATION_KEY;
     emit(ev, sizeof(ev));
-    CHECK(g_keys_stored == 1);
     put_addr(ev + 2, PAD);  // a gamepad's key is BTstack's business
     ev[24] = UNAUTHENTICATED_COMBINATION_KEY_GENERATED_FROM_P192;
     emit(ev, sizeof(ev));
-    CHECK(g_keys_stored == 1);
     ev_disconnect(0x0083, 0x13);
+    CHECK(g_keys_stored == 1);
+
+    // A key still pending when the link goes down is written then.
+    connect();
+    ev_conn_complete(SWITCH, 0x0084, 0);
+    put_addr(ev + 2, SWITCH);
+    emit(ev, sizeof(ev));
+    ev_disconnect(0x0084, 0x13);
+    CHECK(g_keys_stored == 2);
 }
 
 static void test_held_channels()

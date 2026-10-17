@@ -53,6 +53,28 @@ btstack_timer_source_t s_report_timer;
 bool s_report_timer_active;
 btstack_timer_source_t s_sync_timer;
 btstack_timer_source_t s_connect_watchdog;
+// The console's link key, written to flash only once the handshake is over:
+// with v0.1.4 a Switch 2 dropped the pairing link (0x08) right after the
+// key was written during it.
+btstack_timer_source_t s_key_timer;
+constexpr uint32_t kKeyWriteDelayMs = 5000;
+bool s_key_pending;
+bd_addr_t s_key_addr;
+link_key_t s_key;
+link_key_type_t s_key_type;
+
+void write_pending_key()
+{
+    btstack_run_loop_remove_timer(&s_key_timer);
+    if (!s_key_pending) {
+        return;
+    }
+    s_key_pending = false;
+    gap_store_link_key_for_bd_addr(s_key_addr, s_key, s_key_type);
+    ESP_LOGI(TAG, "Stored the console's link key (type %u)", unsigned(s_key_type));
+}
+
+void key_timer_cb(btstack_timer_source_t *) { write_pending_key(); }
 
 bd_addr_t s_host_addr;
 bool s_have_host;
@@ -391,6 +413,7 @@ void release_link()
     btstack_run_loop_remove_timer(&s_connect_watchdog);
     restore_page_settings();
     set_pads_relaxed(false);
+    write_pending_key();
     if (was_up) {
         ESP_LOGI(TAG, "Console link down");
         s_listener->on_link(false);
@@ -428,11 +451,13 @@ void on_channels_up()
 }
 
 // A channel to the console without authenticating first: the console starts
-// authentication itself, as with a real controller.
+// authentication itself, as with a real controller. A Switch 2 instead
+// drops a pager that does not authenticate (0x05), so with console_master
+// we authenticate and encrypt with the stored key first.
 uint8_t create_channel(uint16_t psm, uint16_t *cid)
 {
     const gap_security_level_t saved = gap_get_security_level();
-    gap_set_security_level(LEVEL_0);
+    gap_set_security_level(s_profile->console_master ? LEVEL_2 : LEVEL_0);
     const uint8_t status = l2cap_create_channel(l2cap_handler, s_link_addr, psm, kMtu, cid);
     gap_set_security_level(saved);
     return status;
@@ -716,6 +741,7 @@ void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint1
 
 void forget_host()
 {
+    s_key_pending = false;  // never written back after the drop below
     drop_link();
     if (s_have_host) {
         gap_drop_link_key_for_bd_addr(s_host_addr);
@@ -1012,8 +1038,14 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
         hci_event_link_key_request_get_bd_addr(packet, addr);  // same layout
         if (size >= 25 && is_link_addr(addr) && packet[24] != CHANGED_COMBINATION_KEY &&
             !btstack_is_null(&packet[8], 16)) {
-            gap_store_link_key_for_bd_addr(addr, &packet[8], link_key_type_t(packet[24]));
-            ESP_LOGI(TAG, "Stored the console's link key (type %u)", packet[24]);
+            std::memcpy(s_key_addr, addr, BD_ADDR_LEN);
+            std::memcpy(s_key, &packet[8], sizeof(s_key));
+            s_key_type = link_key_type_t(packet[24]);
+            s_key_pending = true;
+            btstack_run_loop_remove_timer(&s_key_timer);
+            btstack_run_loop_set_timer_handler(&s_key_timer, key_timer_cb);
+            btstack_run_loop_set_timer(&s_key_timer, kKeyWriteDelayMs);
+            btstack_run_loop_add_timer(&s_key_timer);
         }
         break;
     }
