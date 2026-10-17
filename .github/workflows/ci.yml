@@ -30,6 +30,8 @@ jobs:
         run: make -C components/target_wii/test/host
       - name: yucca_app
         run: make -C components/yucca_app/test/host
+      - name: switch_pro
+        run: make -C components/switch_pro/test/host
       - name: WiimoteAnything
         run: make -C components/wiimote_anything/tests BTSTACK_ROOT=$GITHUB_WORKSPACE/external/bluepad32/external/btstack
 
