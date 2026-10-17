@@ -1,6 +1,6 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -g
-SRCS := ../../src/gamepad.cpp ../../src/mapper.cpp ../../src/settings.cpp
+SRCS := ../../src/gamepad.cpp ../../src/mapper.cpp ../../src/settings.cpp ../../src/settings_schema.cpp
 
 .PHONY: test clean
 test: test_core
