@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write  # start the website build
 
 jobs:
   firmware:
@@ -28,3 +29,9 @@ jobs:
           files: build/yucca-${{ github.ref_name }}.bin
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+      # Releases made with GITHUB_TOKEN do not trigger other workflows, so
+      # start the website build (from main, which Pages may deploy) here.
+      - name: Update the website
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main

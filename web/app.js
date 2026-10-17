@@ -19,13 +19,17 @@ fetch("firmware/manifest.json")
 
 let port = null;
 let reader = null;
+let loop = null;
+let closing = false;
 let buffer = "";
 const waiters = [];
 
-async function readLoop() {
+async function readLoop(p) {
   const decoder = new TextDecoder();
-  while (port && port.readable) {
-    reader = port.readable.getReader();
+  // Framing/overrun errors (e.g. while the board restarts) are not fatal:
+  // port.readable comes back, so keep reading until the port is closed.
+  while (!closing && p.readable) {
+    reader = p.readable.getReader();
     try {
       for (;;) {
         const { value, done } = await reader.read();
@@ -35,15 +39,41 @@ async function readLoop() {
         while ((nl = buffer.indexOf("\n")) >= 0) {
           const line = buffer.slice(0, nl).replace(/\r$/, "");
           buffer = buffer.slice(nl + 1);
-          for (const w of [...waiters]) w(line);
+          for (const w of [...waiters]) {
+            try {
+              w(line);
+            } catch (e) {
+              // A garbled line; wait for the next one.
+            }
+          }
         }
       }
     } catch (e) {
-      break;
+      // Fall through and re-acquire the reader.
     } finally {
       reader.releaseLock();
+      reader = null;
     }
   }
+}
+
+// Close the port so the installer (or another connect) can open it.
+async function disconnect() {
+  if (!port) return;
+  const p = port;
+  port = null;
+  closing = true;
+  try {
+    if (reader) await reader.cancel();
+    await loop;
+    await p.close();
+  } catch (e) {
+    // Already gone (unplugged).
+  }
+  closing = false;
+  buffer = "";
+  $("device").hidden = true;
+  $("settings").hidden = true;
 }
 
 // Send a console command; resolve with the first line `match` accepts.
@@ -65,6 +95,11 @@ function command(cmd, match, timeoutMs = 3000) {
       waiters.splice(waiters.indexOf(onLine), 1);
     };
     waiters.push(onLine);
+    if (!port || !port.writable) {
+      done();
+      reject(new Error("Not connected"));
+      return;
+    }
     const writer = port.writable.getWriter();
     writer.write(encoder.encode(cmd + "\r\n")).finally(() => writer.releaseLock());
   });
@@ -80,17 +115,19 @@ const okLine = (line) => {
 };
 
 async function connect() {
+  await disconnect();
+  let p;
   try {
-    port = await navigator.serial.requestPort();
-    await port.open({ baudRate: 115200 });
+    p = await navigator.serial.requestPort();
+    await p.open({ baudRate: 115200 });
     // Keep the board running: don't hold EN/BOOT through DTR/RTS.
-    await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+    await p.setSignals({ dataTerminalReady: false, requestToSend: false });
   } catch (e) {
     setStatus(`Could not open the port: ${e.message}`);
-    port = null;
     return;
   }
-  readLoop();
+  port = p;
+  loop = readLoop(p);
   setStatus("Connected, asking YUCCA…");
   await refresh(5);
 }
@@ -181,6 +218,25 @@ async function save(key, value, spec) {
 }
 
 $("connect").addEventListener("click", connect);
+if ("serial" in navigator) {
+  navigator.serial.addEventListener("disconnect", (e) => {
+    if (e.target === port) {
+      disconnect();
+      setStatus("The board was unplugged.");
+    }
+  });
+}
+// The installer needs the port: let go of it first.
+document.querySelector("esp-web-install-button")?.addEventListener(
+  "click",
+  () => {
+    if (port) {
+      disconnect();
+      setStatus("Disconnected for the installer. Connect again after installing.");
+    }
+  },
+  true
+);
 $("sync").addEventListener("click", async () => {
   await command("yucca_sync", okLine).catch(() => {});
   setStatus("Pairing window open: start pairing on the console now.");

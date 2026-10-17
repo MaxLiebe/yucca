@@ -5,9 +5,7 @@ on:
   push:
     branches: [main]
     paths: ["web/**", "support.yaml", "tools/support_matrix.py", ".github/workflows/pages.yml"]
-  release:
-    types: [published]
-  workflow_dispatch:
+  workflow_dispatch:  # also started by release.yml
 
 permissions:
   contents: read
@@ -16,7 +14,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -36,7 +34,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)
+          # Newest release, prereleases (v1.0.0-rc1) included.
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -z "$tag" ]; then
             echo "No release yet; the installer will say so."
             exit 0
