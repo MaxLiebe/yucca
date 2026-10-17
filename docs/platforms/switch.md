@@ -338,7 +338,7 @@ Behaviour notes:
   - One gbatemp guide claims nxbt (typenoob's build) works on Switch 2, without detail [S17].
   - Switch-bcon reports Classic BT HID verified on hardware [S15].
   - Conclusion: **the Switch 1 protocol in this doc is accepted by Switch 2**, but pairing is more fragile. Test on both consoles early.
-- **Pairing differences.** Observed 2026-10-17 (v0.1.0): the Switch 2 stays silent after opening the HID channels if the controller sends nothing (see §3.4). Pages from YUCCA after that failed pairing were accepted at baseband and dropped with reason 0x13 within 1 s, before any L2CAP channel. Expect the same subcommand handshake. Log any unknown subcommand IDs a Switch 2 sends.
+- **Pairing differences.** Observed 2026-10-17 (v0.1.0): the Switch 2 stays silent after opening the HID channels if the controller sends nothing (see §3.4). With v0.1.1 (0x3F hellos) the console sent `02` within 80 ms, then nothing until `08` 40 s later; YUCCA's hang-up took 25 s to complete too. The slave link to the console was starved while the DualSense link ran guaranteed QoS with a 1.25 ms poll, so the gamepad links are now polled at 10 ms (best effort) while the console is master. Pages from YUCCA after that failed pairing were accepted at baseband and dropped with reason 0x13 within 1 s, before any L2CAP channel. Expect the same subcommand handshake. Log any unknown subcommand IDs a Switch 2 sends.
 - **Rumble.** It was off by default for third-party Pro-compatible pads on Switch 2 until enabled in settings [S13].
 
 ---

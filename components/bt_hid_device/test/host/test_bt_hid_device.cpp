@@ -457,6 +457,33 @@ static void test_qos_one_at_a_time()
     CHECK(s_qos_inflight == HCI_CON_HANDLE_INVALID);
 }
 
+// While the console is master of its link, gamepads are polled less often.
+static void test_pads_relaxed_while_slave()
+{
+    static const bd_addr_t CONSOLE2 = {0x3c, 0xa9, 0xab, 0x21, 0x4a, 0x3b};
+    ev_disconnect(0x0051, 0x13);  // left over from test_qos_one_at_a_time
+    while (s_qos_inflight != HCI_CON_HANDLE_INVALID) {
+        ev_qos_complete(s_qos_inflight, 0);
+    }
+    tune_link(0x0052, PAD);
+    CHECK(s_qos_inflight == 0x0052 && s_qos_inflight_type == kQosGuaranteed && s_qos_inflight_latency == kQosLatencyUs);
+    ev_qos_complete(0x0052, 0);
+
+    sync();
+    g_have_key = false;
+    ev_conn_request(CONSOLE2, 0x000000);
+    ev_conn_complete(CONSOLE2, 0x0090, 0);
+    CHECK(s_qos_inflight == 0x0052 && s_qos_inflight_type == kQosBestEffort && s_qos_inflight_latency == kQosRelaxedUs);
+    ev_qos_complete(0x0052, 0);
+
+    ev_disconnect(0x0090, 0x13);
+    CHECK(s_qos_inflight == 0x0052 && s_qos_inflight_type == kQosGuaranteed && s_qos_inflight_latency == kQosLatencyUs);
+    ev_qos_complete(0x0052, 0);
+    ev_disconnect(0x0052, 0x13);
+    CHECK(s_pads[0] == HCI_CON_HANDLE_INVALID && s_pads[1] == HCI_CON_HANDLE_INVALID);
+    end_sync(true);
+}
+
 static void test_held_channels()
 {
     g_link_level = LEVEL_0;
@@ -568,6 +595,7 @@ int main(int argc, char **)
     RUN(test_late_page_success);
     RUN(test_disconnect_while_paging);
     RUN(test_qos_one_at_a_time);
+    RUN(test_pads_relaxed_while_slave);
     RUN(test_held_channels);
     RUN(test_unplug_forgets);
     RUN(test_unknown_hosts);

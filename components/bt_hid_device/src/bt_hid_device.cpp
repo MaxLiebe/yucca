@@ -31,6 +31,10 @@ constexpr uint32_t kDropTimeoutMs = 5000;
 constexpr uint32_t kQosLatencyUs = 1250;
 constexpr uint8_t kQosBestEffort = 0x01;
 constexpr uint8_t kQosGuaranteed = 0x02;
+// While the console is master of its link (pairing), gamepads are polled
+// this rarely: a 1.25 ms poll starved the console's link on a Switch 2 for
+// 40 s at a time.
+constexpr uint32_t kQosRelaxedUs = 10000;
 
 const Profile *s_profile;
 Listener *s_listener;
@@ -118,10 +122,16 @@ int s_policy_count;
 struct {
     hci_con_handle_t handle;
     uint8_t type;
+    uint32_t latency_us;
 } s_qos_q[4];
 int s_qos_count;
 hci_con_handle_t s_qos_inflight = HCI_CON_HANDLE_INVALID;
 uint8_t s_qos_inflight_type;
+uint32_t s_qos_inflight_latency;
+// Gamepad links tuned by tune_link(), and whether their polling is relaxed
+// for a console link where the ESP32 is slave.
+hci_con_handle_t s_pads[2] = {HCI_CON_HANDLE_INVALID, HCI_CON_HANDLE_INVALID};
+bool s_pads_relaxed;
 
 void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 void connect_watchdog_cb(btstack_timer_source_t *);
@@ -225,7 +235,9 @@ void pump()
         s_qos_count--;
         s_qos_inflight = s_qos_q[s_qos_count].handle;
         s_qos_inflight_type = s_qos_q[s_qos_count].type;
-        hci_send_cmd(&hci_qos_setup, s_qos_inflight, 0, s_qos_inflight_type, 20000, 0, kQosLatencyUs, 0xffffffffu);
+        s_qos_inflight_latency = s_qos_q[s_qos_count].latency_us;
+        hci_send_cmd(&hci_qos_setup, s_qos_inflight, 0, s_qos_inflight_type, 20000, 0, s_qos_inflight_latency,
+                     0xffffffffu);
     } else if (s_cmd_cancel_page) {
         s_cmd_cancel_page = false;
         hci_send_cmd(&hci_create_connection_cancel, s_cancel_addr);
@@ -243,12 +255,35 @@ void queue_policy(hci_con_handle_t handle, uint16_t policy)
     pump();
 }
 
-void queue_qos(hci_con_handle_t handle, uint8_t type)
+void queue_qos(hci_con_handle_t handle, uint8_t type, uint32_t latency_us = kQosLatencyUs)
 {
     if (s_qos_count < 4) {
-        s_qos_q[s_qos_count++] = {handle, type};
+        s_qos_q[s_qos_count++] = {handle, type, latency_us};
     }
     pump();
+}
+
+// Fast polling for the gamepads, or relaxed while the console is our master.
+void tune_pad_qos(hci_con_handle_t handle)
+{
+    if (s_pads_relaxed) {
+        queue_qos(handle, kQosBestEffort, kQosRelaxedUs);
+    } else {
+        queue_qos(handle, kQosGuaranteed);
+    }
+}
+
+void set_pads_relaxed(bool relaxed)
+{
+    if (relaxed == s_pads_relaxed) {
+        return;
+    }
+    s_pads_relaxed = relaxed;
+    for (auto h : s_pads) {
+        if (h != HCI_CON_HANDLE_INVALID) {
+            tune_pad_qos(h);
+        }
+    }
 }
 
 void qos_failed(hci_con_handle_t handle, uint8_t status)
@@ -355,6 +390,7 @@ void release_link()
     report_timer_stop();
     btstack_run_loop_remove_timer(&s_connect_watchdog);
     restore_page_settings();
+    set_pads_relaxed(false);
     if (was_up) {
         ESP_LOGI(TAG, "Console link down");
         s_listener->on_link(false);
@@ -930,6 +966,9 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
             break;
         }
         s_link_handle = hci_event_connection_complete_get_connection_handle(packet);
+        if (!s_link_outgoing) {
+            set_pads_relaxed(true);  // the console is master: give it air time
+        }
         if (s_link_dropping) {
             gap_disconnect(s_link_handle);  // disconnect() came while paging
         } else if (s_link_outgoing && s_link_master) {
@@ -960,6 +999,11 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
         release_held(handle, -1);
         if (handle == s_qos_inflight) {
             s_qos_inflight = HCI_CON_HANDLE_INVALID;
+        }
+        for (auto &h : s_pads) {
+            if (h == handle) {
+                h = HCI_CON_HANDLE_INVALID;
+            }
         }
         if (s_link_claimed && handle == s_link_handle) {
             s_last_reason = hci_event_disconnection_complete_get_reason(packet);
@@ -1068,7 +1112,10 @@ void tune_link(hci_con_handle_t handle, const bd_addr_t addr)
         gap_request_role(addr, HCI_ROLE_MASTER);
     }
     queue_policy(handle, LM_LINK_POLICY_ENABLE_ROLE_SWITCH);
-    queue_qos(handle, kQosGuaranteed);
+    if (s_pads[0] != handle && s_pads[1] != handle) {
+        (s_pads[0] == HCI_CON_HANDLE_INVALID ? s_pads[0] : s_pads[1]) = handle;
+    }
+    tune_pad_qos(handle);
 }
 
 void local_address(bd_addr_t out) { gap_local_bd_addr(out); }
