@@ -1,6 +1,7 @@
 // Settings in the ESP32's NVS flash (namespace "yucca"). Device only.
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 
 #include "yucca/settings.h"
@@ -22,7 +23,7 @@ public:
 
 private:
     uint32_t handle_ = 0;
-    bool dirty_ = false;
+    std::atomic<bool> dirty_{false};  // set from the app tick and the console task
 };
 
 }  // namespace yucca

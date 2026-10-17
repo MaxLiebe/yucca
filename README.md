@@ -24,6 +24,9 @@ idf.py build flash monitor
 | Hold **Select + Start** 3 s | Sync with a console again |
 | **BOOT** short press | Same |
 | Hold **BOOT** 5 s | Forget the console and all controllers |
+| Hold **Select + Home** 3 s | Console menu: the player LEDs show the console (1 Wii, 2 Wii U, 3 Switch, 4 Switch 2), d-pad left/right to change, A to confirm (YUCCA restarts), Select to cancel |
+
+Settings can also be changed over USB serial (115200): `yucca_info` shows everything, `yucca_set <key> <value>` changes it.
 
 ## What works
 

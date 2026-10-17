@@ -14,10 +14,11 @@ v1 controllers: DS3, DS4, DualSense, Wiimote + extensions, Wii U Pro, Switch Pro
 | Path | What |
 | --- | --- |
 | `main/` | Boot: settings, BTstack, pick input + target, 20 ms tick. Thin; logic lives in components. |
-| `components/yucca_app/` | `App`: wires input to target, scanning policy, sync/forget gestures. Host-tested with fakes. |
+| `components/yucca_app/` | `App`: wires input to target, scanning policy, sync/forget gestures, console menu. Host-tested with fakes. |
+| `components/yucca_console/` | Serial commands (`yucca_info`, `yucca_set`, ...) used by the web settings page. |
 | `components/wiimote_anything/` | Wii Remote emulation library, `git subtree` of MaxLiebe/wiimote-anything. Push fixes back with `git subtree push`. |
 | `external/bluepad32/` | Bluepad32 submodule (gamepads, and the BTstack we build on). Its BTstack patches are applied at configure time. |
-| `components/yucca_core/` | `GamepadState`, `Feedback`, `InputDriver`, `Target`, `Mapper`, `Settings` (memory + NVS). No ESP-IDF headers except `nvs_settings`. |
+| `components/yucca_core/` | `GamepadState`, `Feedback`, `InputDriver`, `Target`, `Mapper`, `Settings` (memory + NVS), settings schema (every user setting, one table). No ESP-IDF headers except `nvs_settings`. |
 | `components/input_bluepad32/` | Controller side: Bluepad32 -> `GamepadState`, feedback to the controller. `src/convert.*` is host-tested. |
 | `components/target_wii/` | Wii: Wii Remote + Classic Controller via WiimoteAnything, reconnect policy. Host-tested against a fake WiimoteAnything. |
 | `components/target_*/` | Other consoles, one per emulated device. |
@@ -39,6 +40,10 @@ python3 tools/support_matrix.py --write      # regenerate the README table
 ```
 
 Host tests (Linux, no hardware) live next to each component under `test/host/` (WiimoteAnything: `tests/`) and run in the CI `host-tests` job. A new component adds its own step there.
+
+## Adding a setting
+
+Add it to `s_schema` in `components/yucca_core/src/settings_schema.cpp`. The console, the web page and `yucca_info` pick it up from there.
 
 ## Rules
 

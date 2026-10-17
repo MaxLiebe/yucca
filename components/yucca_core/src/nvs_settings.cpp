@@ -73,8 +73,9 @@ void NvsSettings::erase(const char *key)
 
 void NvsSettings::commit()
 {
-    if (dirty_ && nvs_commit(handle_) == ESP_OK) {
-        dirty_ = false;
+    // Clear first: a set racing with this commit leaves dirty_ set again.
+    if (dirty_.exchange(false) && nvs_commit(handle_) != ESP_OK) {
+        dirty_ = true;
     }
 }
 

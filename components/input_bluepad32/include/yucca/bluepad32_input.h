@@ -15,6 +15,9 @@ public:
     // Before begin(): look for BLE controllers too (Stadia, Xbox, some 8BitDo).
     void set_ble_enabled(bool on) { ble_ = on; }
 
+    // Called when Bluepad32's serial console starts, to add commands to it.
+    void set_console_hook(void (*hook)()) { console_hook_ = hook; }
+
     // Bluepad32's HCI/L2CAP packet handler, for a target that shares the stack.
     static PacketHandler packet_handler();
 
@@ -29,6 +32,7 @@ public:
 private:
     Bluepad32Input() = default;
     bool ble_ = true;
+    void (*console_hook_)() = nullptr;
 };
 
 }  // namespace yucca

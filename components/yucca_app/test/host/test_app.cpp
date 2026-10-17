@@ -36,6 +36,7 @@ struct FakeTarget : Target {
     TargetListener *listener = nullptr;
     bool is_syncing = false;
     int syncs = 0, forgets = 0, ready = 0, gone = 0, updates = 0;
+    uint32_t last_buttons = 0;
     const char *id() const override { return "fake"; }
     const char *name() const override { return "Fake"; }
     void set_fallback_handler(PacketHandler) override {}
@@ -52,15 +53,23 @@ struct FakeTarget : Target {
     void forget() override { forgets++; }
     void on_input_ready(const InputLink &) override { ready++; }
     void on_input_gone() override { gone++; }
-    void update(const GamepadState &) override { updates++; }
+    void update(const GamepadState &s) override
+    {
+        updates++;
+        last_buttons = s.buttons;
+    }
     void tick(int64_t) override {}
 };
+
+static const SettingChoice kTargets[] = {{"wii", "Wii"}, {"wiiu", "Wii U"}, {"switch", "Switch"}};
+static int g_restarts = 0;
+static void fake_restart() { g_restarts++; }
 
 struct Rig {
     MemorySettings settings;
     FakeInput input;
     FakeTarget target;
-    App app{settings, input, target};
+    App app{settings, input, target, kTargets, 3, fake_restart};
     int64_t now = 0;
     Rig() { app.begin(); }
     void run(int64_t ms, bool boot = false)
@@ -168,8 +177,122 @@ static void test_combo_waits_for_open_sync_window()
     CHECK(r.target.syncs == 1);
 }
 
+static void press(Rig &r, Button b)
+{
+    GamepadState s;
+    s.set(b, true);
+    r.app.on_input_state(s);
+    r.app.on_input_state(GamepadState{});
+}
+
+static void open_menu(Rig &r)
+{
+    r.controller_ready();
+    GamepadState s;
+    s.set(Button::Select, true);
+    s.set(Button::Home, true);
+    r.app.on_input_state(s);
+    r.run(3100);
+    CHECK(r.app.menu_open());
+    r.app.on_input_state(GamepadState{});  // let go of the combo
+}
+
+static void test_menu_switches_console_and_restarts()
+{
+    g_restarts = 0;
+    Rig r;
+    open_menu(r);
+    CHECK(r.input.feedback.player_leds == 0x1);  // Wii (default)
+    int updates = r.target.updates;
+    press(r, Button::DpadRight);
+    CHECK(r.input.feedback.player_leds == 0x2);
+    CHECK(r.input.feedback.rumble_left > 0);
+    r.run(200);
+    CHECK_NEAR(r.input.feedback.rumble_left, 0.0);  // pulse ended
+    press(r, Button::DpadRight);
+    CHECK(r.input.feedback.player_leds == 0x4);
+    CHECK(r.target.updates == updates);  // nothing reached the console
+    press(r, Button::South);
+    CHECK(r.settings.get_str(keys::kTarget, "wii") == "switch");
+    CHECK(g_restarts == 1);
+}
+
+static void test_menu_wraps_and_cancels()
+{
+    g_restarts = 0;
+    Rig r;
+    open_menu(r);
+    press(r, Button::DpadLeft);
+    CHECK(r.input.feedback.player_leds == 0x4);  // wrapped to the last
+    Feedback f;
+    f.player_leds = 0x8;
+    r.app.on_target_feedback(f);                 // held back while the menu is open
+    CHECK(r.input.feedback.player_leds == 0x4);
+    press(r, Button::Select);
+    CHECK(!r.app.menu_open());
+    CHECK(r.input.feedback.player_leds == 0x8);  // console's LEDs restored
+    CHECK(g_restarts == 0);
+    CHECK(r.settings.get_str(keys::kTarget, "wii") == "wii");
+}
+
+static void test_menu_same_console_and_timeout()
+{
+    g_restarts = 0;
+    Rig r;
+    open_menu(r);
+    press(r, Button::East);  // confirm the current console: just close
+    CHECK(!r.app.menu_open());
+    CHECK(g_restarts == 0);
+    GamepadState s;
+    s.set(Button::Select, true);
+    s.set(Button::Home, true);
+    r.app.on_input_state(s);
+    r.run(3100);
+    CHECK(r.app.menu_open());
+    r.app.on_input_state(GamepadState{});
+    r.run(15100);
+    CHECK(!r.app.menu_open());
+}
+
+static void test_menu_combo_hidden_and_sync_combo_ignored()
+{
+    Rig r;
+    r.controller_ready();
+    GamepadState s;
+    s.set(Button::Select, true);
+    s.set(Button::Home, true);
+    s.set(Button::South, true);
+    r.app.on_input_state(s);
+    CHECK(r.target.last_buttons == bit(Button::South));  // console never sees Home
+    r.run(3100);
+    CHECK(r.app.menu_open());
+    GamepadState sync;
+    sync.set(Button::Select, true);
+    sync.set(Button::Start, true);
+    r.app.on_input_state(sync);
+    r.run(3500);
+    CHECK(r.target.syncs == 0);  // the sync combo is off inside the menu
+}
+
+static void test_console_requests_run_on_tick()
+{
+    Rig r;
+    r.app.request_sync();
+    CHECK(r.target.syncs == 0);
+    r.run(20);
+    CHECK(r.target.syncs == 1);
+    r.app.request_forget();
+    r.run(20);
+    CHECK(r.target.forgets == 1);
+}
+
 int main()
 {
+    RUN(test_console_requests_run_on_tick);
+    RUN(test_menu_switches_console_and_restarts);
+    RUN(test_menu_wraps_and_cancels);
+    RUN(test_menu_same_console_and_timeout);
+    RUN(test_menu_combo_hidden_and_sync_combo_ignored);
     RUN(test_forget_tells_target_controller_is_gone);
     RUN(test_combo_waits_for_open_sync_window);
     RUN(test_scans_until_controller_ready);
