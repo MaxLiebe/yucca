@@ -62,7 +62,23 @@ uint16_t s_cid_control;
 uint16_t s_cid_interrupt;
 // An outgoing channel abandoned before it opened: its late CHANNEL_OPENED is
 // swallowed instead of reaching the host stack.
-uint16_t s_stale_cid[2];
+constexpr int kStaleMax = 4;
+uint16_t s_stale_cid[kStaleMax];
+
+void add_stale(uint16_t cid)
+{
+    if (cid == 0) {
+        return;
+    }
+    for (auto &c : s_stale_cid) {
+        if (c == 0) {
+            c = cid;
+            return;
+        }
+    }
+    s_stale_cid[0] = cid;  // full: the oldest is least likely to still arrive
+}
+
 bool s_control_open;
 bool s_interrupt_open;
 bool s_link_up;
@@ -325,8 +341,8 @@ void release_link()
 {
     const bool was_up = s_link_up;
     if (s_link_outgoing) {
-        s_stale_cid[0] = s_control_open ? 0 : s_cid_control;
-        s_stale_cid[1] = s_interrupt_open ? 0 : s_cid_interrupt;
+        add_stale(s_control_open ? 0 : s_cid_control);
+        add_stale(s_interrupt_open ? 0 : s_cid_interrupt);
     }
     s_link_claimed = false;
     s_link_outgoing = false;
@@ -576,12 +592,21 @@ void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint1
     }
     case L2CAP_EVENT_CHANNEL_OPENED: {
         const uint16_t cid = l2cap_event_channel_opened_get_local_cid(packet);
-        if (cid != 0 && (cid == s_stale_cid[0] || cid == s_stale_cid[1])) {
-            (cid == s_stale_cid[0] ? s_stale_cid[0] : s_stale_cid[1]) = 0;
+        for (auto &stale : s_stale_cid) {
+            if (cid == 0 || cid != stale) {
+                continue;
+            }
+            stale = 0;
             if (l2cap_event_channel_opened_get_status(packet) == ERROR_CODE_SUCCESS) {
-                // A page we gave up on succeeded after all: nobody owns it.
+                // A page we gave up on succeeded after all: close the channel,
+                // and the link too unless a new attempt to the same console
+                // shares it.
                 l2cap_disconnect(cid);
-                gap_disconnect(l2cap_event_channel_opened_get_handle(packet));
+                bd_addr_t addr;
+                l2cap_event_channel_opened_get_address(packet, addr);
+                if (!is_link_addr(addr)) {
+                    gap_disconnect(l2cap_event_channel_opened_get_handle(packet));
+                }
             }
             return;
         }

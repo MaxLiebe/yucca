@@ -406,6 +406,19 @@ static void test_late_page_success()
     l2cap_opened(SWITCH, 0x0084, 0x11, ctrl);
     CHECK(g_forwarded == fwd && g_disconnects == disc + 1);
     ev_disconnect(0x0084, 0x16);
+
+    // Same again, but a new attempt to the console shares the link: only the
+    // stale channel is closed.
+    connect();
+    const uint16_t old = s_cid_control;
+    disconnect();
+    s_connect_watchdog.process(&s_connect_watchdog);
+    connect();
+    CHECK(connecting());
+    l2cap_opened(SWITCH, 0x0085, 0x11, old);
+    CHECK(g_disconnects == disc + 1 && connecting());
+    disconnect();
+    ev_conn_complete(SWITCH, 0x0000, 0x02);
 }
 
 static void test_disconnect_while_paging()
