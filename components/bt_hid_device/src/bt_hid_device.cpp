@@ -27,6 +27,7 @@ constexpr uint32_t kCodMajorPeripheral = 0x000500;
 constexpr uint16_t kPageTimeoutConsole = 0x2000;  // 5.12 s
 constexpr uint16_t kPageTimeoutDefault = 0x6000;  // BTstack's default
 constexpr uint32_t kConnectTimeoutMs = 15000;
+constexpr uint32_t kDropTimeoutMs = 5000;
 constexpr uint32_t kQosLatencyUs = 1250;
 constexpr uint8_t kQosBestEffort = 0x01;
 constexpr uint8_t kQosGuaranteed = 0x02;
@@ -38,6 +39,9 @@ bool s_setup_done;
 bool s_sdp_registered;
 
 uint8_t s_hid_record[700];
+// Upper bound of the HID record without the descriptor and the three strings
+// (the test checks the real size stays below it).
+constexpr size_t kSdpFixedBytes = 240;
 uint8_t s_pnp_record[128];
 
 btstack_packet_callback_registration_t s_hci_registration;
@@ -56,6 +60,9 @@ bool s_link_outgoing;
 bool s_link_master;
 uint16_t s_cid_control;
 uint16_t s_cid_interrupt;
+// An outgoing channel abandoned before it opened: its late CHANNEL_OPENED is
+// swallowed instead of reaching the host stack.
+uint16_t s_stale_cid;
 bool s_control_open;
 bool s_interrupt_open;
 bool s_link_up;
@@ -64,6 +71,12 @@ bool s_sync_active;
 uint8_t s_pending_handshake = 0xff;
 bool s_restore_role_switch;
 bool s_restore_page_timeout;
+// drop_link() was called before the link had a handle; it is released once
+// the page ends (or the watchdog gives up waiting).
+bool s_link_dropping;
+// A second console's ACL, hidden from the host stack: disconnected once up.
+bd_addr_t s_reject_addr;
+bool s_reject_pending;
 
 // Incoming gamepad channels held until the link is as secure as the host
 // stack wants (our PSM services are level 0: the console must not be challenged).
@@ -95,6 +108,16 @@ hci_con_handle_t s_qos_inflight = HCI_CON_HANDLE_INVALID;
 uint8_t s_qos_inflight_type;
 
 void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
+void connect_watchdog_cb(btstack_timer_source_t *);
+void forget_host();
+
+void arm_watchdog(uint32_t ms)
+{
+    btstack_run_loop_remove_timer(&s_connect_watchdog);
+    btstack_run_loop_set_timer_handler(&s_connect_watchdog, connect_watchdog_cb);
+    btstack_run_loop_set_timer(&s_connect_watchdog, ms);
+    btstack_run_loop_add_timer(&s_connect_watchdog);
+}
 
 bool addr_eq(const bd_addr_t a, const bd_addr_t b) { return std::memcmp(a, b, BD_ADDR_LEN) == 0; }
 
@@ -137,9 +160,15 @@ bool is_console(const bd_addr_t addr, uint32_t cod, bool cod_known)
     if (is_link_addr(addr) || (s_have_host && addr_eq(addr, s_host_addr))) {
         return true;
     }
-    // Unknown hosts only while syncing, and never something that calls
-    // itself a peripheral (a gamepad reconnecting).
-    return cod_known && s_sync_active && (cod & kCodMajorMask) != kCodMajorPeripheral;
+    // Unknown hosts only while syncing, never something that calls itself a
+    // peripheral, and never a device we already have a key for (a bonded
+    // gamepad or another host reconnecting).
+    if (!cod_known || !s_sync_active || (cod & kCodMajorMask) == kCodMajorPeripheral) {
+        return false;
+    }
+    link_key_t key;
+    link_key_type_t type;
+    return !gap_get_link_key_for_bd_addr(const_cast<uint8_t *>(addr), key, &type);
 }
 
 void claim_link(const bd_addr_t addr, bool outgoing)
@@ -149,7 +178,10 @@ void claim_link(const bd_addr_t addr, bool outgoing)
     s_link_outgoing = outgoing;
     s_link_master = outgoing;  // the pager starts as master
     s_link_handle = HCI_CON_HANDLE_INVALID;
+    s_link_dropping = false;
     s_last_reason = 0;
+    // Incoming or outgoing, the HID channels must come up in time.
+    arm_watchdog(kConnectTimeoutMs);
 }
 
 // --- HCI command queue
@@ -168,7 +200,7 @@ void pump()
         s_policy_count--;
         hci_send_cmd(&hci_write_link_policy_settings, s_policy_q[s_policy_count].handle,
                      s_policy_q[s_policy_count].policy);
-    } else if (s_qos_count > 0) {
+    } else if (s_qos_count > 0 && s_qos_inflight == HCI_CON_HANDLE_INVALID) {
         s_qos_count--;
         s_qos_inflight = s_qos_q[s_qos_count].handle;
         s_qos_inflight_type = s_qos_q[s_qos_count].type;
@@ -287,10 +319,14 @@ void restore_page_settings()
 void release_link()
 {
     const bool was_up = s_link_up;
+    if (s_link_outgoing && s_cid_control != 0 && !s_control_open) {
+        s_stale_cid = s_cid_control;
+    }
     s_link_claimed = false;
     s_link_outgoing = false;
     s_link_up = false;
     s_link_handle = HCI_CON_HANDLE_INVALID;
+    s_link_dropping = false;
     s_cid_control = s_cid_interrupt = 0;
     s_control_open = s_interrupt_open = false;
     s_pending_handshake = 0xff;
@@ -355,29 +391,33 @@ void drop_link()
         pump();
         return;  // DISCONNECTION_COMPLETE releases the link
     }
-    if (s_cid_interrupt) {
-        l2cap_disconnect(s_cid_interrupt);
-    }
-    if (s_cid_control) {
-        l2cap_disconnect(s_cid_control);
+    if (s_link_outgoing) {
+        // Still paging: cancel it and keep the claim until the page ends, so
+        // a page that completes anyway is ours to hang up.
+        if (!s_link_dropping) {
+            s_link_dropping = true;
+            std::memcpy(s_cancel_addr, s_link_addr, BD_ADDR_LEN);
+            s_cmd_cancel_page = true;
+            pump();
+            arm_watchdog(kDropTimeoutMs);
+        }
+        return;
     }
     release_link();
 }
 
 void connect_watchdog_cb(btstack_timer_source_t *)
 {
-    if (!s_link_claimed || s_link_up || !s_link_outgoing) {
+    if (!s_link_claimed || s_link_up) {
         return;
     }
-    ESP_LOGW(TAG, "Connecting to the console timed out");
-    if (s_link_handle != HCI_CON_HANDLE_INVALID) {
-        gap_disconnect(s_link_handle);
+    if (s_link_dropping) {
+        ESP_LOGW(TAG, "Page did not end; releasing the console link");
+        release_link();
         return;
     }
-    std::memcpy(s_cancel_addr, s_link_addr, BD_ADDR_LEN);
-    s_cmd_cancel_page = true;
-    pump();
-    release_link();
+    ESP_LOGW(TAG, "Console link did not come up in time");
+    drop_link();
 }
 
 void sync_timer_cb(btstack_timer_source_t *)
@@ -403,8 +443,8 @@ void handle_hid(uint16_t cid, const uint8_t *data, size_t len)
     const uint8_t type = data[0] >> 4, param = data[0] & 0x0f;
     switch (type) {
     case 0x1:  // HID_CONTROL
-        if (param == 0x05 && s_link_handle != HCI_CON_HANDLE_INVALID) {  // VIRTUAL_CABLE_UNPLUG
-            gap_disconnect(s_link_handle);
+        if (param == 0x05) {  // VIRTUAL_CABLE_UNPLUG: the console dropped the bond
+            forget_host();
         }
         return;
     case 0x5:  // SET_REPORT (output)
@@ -455,7 +495,10 @@ bool hold_until_secure(uint16_t channel, hci_con_handle_t handle, uint8_t *packe
             return true;
         }
     }
-    return false;
+    // Never let a gamepad channel through below the host stack's level.
+    ESP_LOGW(TAG, "Too many channels waiting for security; declining one");
+    l2cap_decline_connection(l2cap_event_incoming_connection_get_local_cid(packet));
+    return true;
 }
 
 void release_held(hci_con_handle_t handle, int level)
@@ -524,6 +567,10 @@ void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint1
     }
     case L2CAP_EVENT_CHANNEL_OPENED: {
         const uint16_t cid = l2cap_event_channel_opened_get_local_cid(packet);
+        if (cid != 0 && cid == s_stale_cid) {
+            s_stale_cid = 0;
+            return;
+        }
         if (!is_our_cid(cid)) {
             forward(packet_type, channel, packet, size);
             return;
@@ -533,7 +580,9 @@ void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint1
         if (status != ERROR_CODE_SUCCESS) {
             ESP_LOGW(TAG, "Console channel PSM 0x%04x failed (0x%02x)", psm, status);
             (cid == s_cid_control ? s_cid_control : s_cid_interrupt) = 0;
-            if (s_link_outgoing) {
+            if (s_link_handle == HCI_CON_HANDLE_INVALID) {
+                release_link();  // the page failed
+            } else if (s_link_outgoing) {
                 drop_link();
             }
             return;
@@ -588,6 +637,23 @@ void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint1
         forward(packet_type, channel, packet, size);
         return;
     }
+}
+
+void forget_host()
+{
+    drop_link();
+    if (s_have_host) {
+        gap_drop_link_key_for_bd_addr(s_host_addr);
+    }
+    s_have_host = false;
+    std::memset(s_host_addr, 0, sizeof(s_host_addr));
+    const btstack_tlv_t *tlv = nullptr;
+    void *ctx = nullptr;
+    btstack_tlv_get_instance(&tlv, &ctx);
+    if (tlv != nullptr) {
+        tlv->delete_tag(ctx, s_profile->host_tag);
+    }
+    ESP_LOGI(TAG, "Forgot the console");
 }
 
 // --- SDP and identity
@@ -705,13 +771,16 @@ void register_sdp()
     if (sdp_get_record_for_handle(0x10003) != nullptr) {
         sdp_unregister_service(0x10003);
     }
+    // The builder does not check bounds, so check the variable parts first.
+    const size_t need = kSdpFixedBytes + s_profile->descriptor_len + std::strlen(s_profile->service_name) +
+                        std::strlen(s_profile->service_description) + std::strlen(s_profile->provider);
+    if (need > sizeof(s_hid_record)) {
+        ESP_LOGE(TAG, "HID SDP record too large (%u bytes)", unsigned(need));
+        return;
+    }
     const uint32_t hid = sdp_create_service_record_handle();
     std::memset(s_hid_record, 0, sizeof(s_hid_record));
     build_hid_record(s_hid_record, hid);
-    if (de_get_len(s_hid_record) > sizeof(s_hid_record)) {
-        ESP_LOGE(TAG, "HID SDP record overflow");
-        return;
-    }
     sdp_register_service(s_hid_record);
     const uint32_t pnp = sdp_create_service_record_handle();
     std::memset(s_pnp_record, 0, sizeof(s_pnp_record));
@@ -788,7 +857,10 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
             break;
         }
         if (s_link_claimed && !addr_eq(addr, s_link_addr)) {
-            ESP_LOGW(TAG, "Second console %s ignored", bd_addr_to_str(addr));
+            // Accepted by BTstack already; hang up once it is up.
+            ESP_LOGW(TAG, "Second console %s refused", bd_addr_to_str(addr));
+            std::memcpy(s_reject_addr, addr, BD_ADDR_LEN);
+            s_reject_pending = true;
         } else {
             ESP_LOGI(TAG, "Incoming ACL from console %s (cod 0x%06lx)", bd_addr_to_str(addr), (unsigned long)cod);
             claim_link(addr, false);
@@ -802,17 +874,27 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
     case HCI_EVENT_CONNECTION_COMPLETE: {
         bd_addr_t addr;
         hci_event_connection_complete_get_bd_addr(packet, addr);
+        const bool ok = hci_event_connection_complete_get_status(packet) == ERROR_CODE_SUCCESS;
+        if (s_reject_pending && addr_eq(addr, s_reject_addr)) {
+            s_reject_pending = false;
+            if (ok) {
+                gap_disconnect(hci_event_connection_complete_get_connection_handle(packet));
+            }
+            break;
+        }
         if (!is_link_addr(addr)) {
             break;
         }
         restore_page_settings();
-        if (hci_event_connection_complete_get_status(packet) == ERROR_CODE_SUCCESS) {
-            s_link_handle = hci_event_connection_complete_get_connection_handle(packet);
-            if (s_link_outgoing && s_link_master) {
-                queue_policy(s_link_handle, 0);  // stay master, no sniff
-            }
-        } else if (!s_link_outgoing) {
+        if (!ok) {
             release_link();
+            break;
+        }
+        s_link_handle = hci_event_connection_complete_get_connection_handle(packet);
+        if (s_link_dropping) {
+            gap_disconnect(s_link_handle);  // disconnect() came while paging
+        } else if (s_link_outgoing && s_link_master) {
+            queue_policy(s_link_handle, 0);  // stay master, no sniff
         }
         break;
     }
@@ -837,6 +919,9 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
     case HCI_EVENT_DISCONNECTION_COMPLETE: {
         const hci_con_handle_t handle = hci_event_disconnection_complete_get_connection_handle(packet);
         release_held(handle, -1);
+        if (handle == s_qos_inflight) {
+            s_qos_inflight = HCI_CON_HANDLE_INVALID;
+        }
         if (s_link_claimed && handle == s_link_handle) {
             s_last_reason = hci_event_disconnection_complete_get_reason(packet);
             ESP_LOGI(TAG, "Console disconnected (reason 0x%02x)", s_last_reason);
@@ -917,14 +1002,10 @@ void connect()
     }
     if (create_channel(kPsmControl, &s_cid_control) != ERROR_CODE_SUCCESS) {
         s_cid_control = 0;
-        s_link_claimed = false;
-        restore_page_settings();
+        release_link();
         return;
     }
     ESP_LOGI(TAG, "Paging console %s", bd_addr_to_str(s_host_addr));
-    btstack_run_loop_set_timer_handler(&s_connect_watchdog, connect_watchdog_cb);
-    btstack_run_loop_set_timer(&s_connect_watchdog, kConnectTimeoutMs);
-    btstack_run_loop_add_timer(&s_connect_watchdog);
 }
 
 bool connecting() { return s_link_claimed && !s_link_up; }
@@ -932,22 +1013,7 @@ bool connected() { return s_link_up; }
 void disconnect() { drop_link(); }
 bool has_host() { return s_have_host; }
 
-void forget()
-{
-    drop_link();
-    if (s_have_host) {
-        gap_drop_link_key_for_bd_addr(s_host_addr);
-    }
-    s_have_host = false;
-    std::memset(s_host_addr, 0, sizeof(s_host_addr));
-    const btstack_tlv_t *tlv = nullptr;
-    void *ctx = nullptr;
-    btstack_tlv_get_instance(&tlv, &ctx);
-    if (tlv != nullptr) {
-        tlv->delete_tag(ctx, s_profile->host_tag);
-    }
-    ESP_LOGI(TAG, "Forgot the console");
-}
+void forget() { forget_host(); }
 
 bool link_is_master() { return s_link_up && s_link_master; }
 uint8_t last_disconnect_reason() { return s_last_reason; }

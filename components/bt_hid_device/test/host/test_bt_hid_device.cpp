@@ -268,7 +268,8 @@ static void test_begin()
     ev_state(HCI_STATE_WORKING);
     CHECK(std::strcmp(g_name, "Pro Controller") == 0 && g_cod == 0x002508);
     CHECK(g_record_count == 2 && g_pnp_vid == 0x057e && g_pnp_pid == 0x2009);
-    CHECK(de_get_len(s_hid_record) < sizeof(s_hid_record));
+    CHECK(de_get_len(s_hid_record) <= kSdpFixedBytes + sizeof(kDescriptor) + std::strlen(kProfile.service_name) +
+                                          std::strlen(kProfile.service_description) + std::strlen(kProfile.provider));
     uint8_t *desc = sdp_get_attribute_value_for_attribute_id(s_hid_record, 0x0206);
     CHECK(desc != nullptr && de_get_len(desc) > sizeof(kDescriptor));
     uint8_t *sub = sdp_get_attribute_value_for_attribute_id(s_hid_record, 0x0202);
@@ -359,25 +360,134 @@ static void test_reconnect_as_master()
     CHECK(!connected());
 }
 
-static void test_watchdog_and_forget()
+static int count_cmd(const hci_cmd_t *cmd)
+{
+    int n = 0;
+    for (auto *c : g_cmds) {
+        n += c == cmd;
+    }
+    return n;
+}
+
+static void ev_qos_complete(uint16_t handle, uint8_t status)
+{
+    uint8_t ev[21] = {HCI_EVENT_QOS_SETUP_COMPLETE, 19, status};
+    little_endian_store_16(ev, 3, handle);
+    emit(ev, sizeof(ev));
+}
+
+static void test_watchdog_while_paging()
 {
     connect();
-    CHECK(connecting());
+    const uint16_t ctrl = s_cid_control;
+    CHECK(connecting() && g_watchdog_armed);
     g_cmds.clear();
     s_connect_watchdog.process(&s_connect_watchdog);
-    CHECK(!connecting());
-    CHECK(!g_cmds.empty() && g_cmds.back() == &hci_create_connection_cancel);
+    CHECK(count_cmd(&hci_create_connection_cancel) == 1);
+    CHECK(connecting());  // claimed until the page ends
+    ev_conn_complete(SWITCH, 0x0000, 0x02);  // cancelled
+    CHECK(!connecting() && !s_link_claimed);
+    // The abandoned channel's failure does not reach Bluepad32.
+    const int fwd = g_forwarded;
+    l2cap_opened(SWITCH, 0x0000, 0x11, ctrl, 0x04);
+    CHECK(g_forwarded == fwd);
+}
 
-    // Gamepad tuning.
+static void test_disconnect_while_paging()
+{
+    // The page completes despite the cancel: the link is hung up.
+    connect();
+    disconnect();
+    CHECK(connecting());
+    const int disc = g_disconnects;
+    ev_conn_complete(SWITCH, 0x0082, 0);
+    CHECK(g_disconnects == disc + 1 && !connected());
+    ev_disconnect(0x0082, 0x16);
+    CHECK(!connecting());
+
+    // No page result at all: the watchdog lets go.
+    connect();
+    disconnect();
+    s_connect_watchdog.process(&s_connect_watchdog);
+    CHECK(!connecting() && !g_watchdog_armed);
+}
+
+static void test_qos_one_at_a_time()
+{
+    static const bd_addr_t PAD2 = {0x10, 0x20, 0x30, 0x40, 0x50, 0x61};
     g_cmds.clear();
     tune_link(0x0050, PAD);
-    CHECK(g_role_requests == 1);
-    CHECK(g_cmds.size() == 2);
+    tune_link(0x0051, PAD2);
+    CHECK(g_role_requests == 2);
+    CHECK(count_cmd(&hci_qos_setup) == 1);
+    ev_qos_complete(0x0051, 0);  // queue is LIFO: 0x0051 went first
+    CHECK(count_cmd(&hci_qos_setup) == 2);
+    // Guaranteed refused: retried as best effort, after the first completes.
+    ev_qos_complete(0x0050, 0x1e);
+    CHECK(count_cmd(&hci_qos_setup) == 3 && s_qos_inflight == 0x0050 && s_qos_inflight_type == kQosBestEffort);
+    ev_disconnect(0x0050, 0x13);  // a pad that leaves clears the in-flight request
+    CHECK(s_qos_inflight == HCI_CON_HANDLE_INVALID);
+}
 
-    forget();
-    CHECK(!has_host() && !g_tlv_have && g_keys_dropped == 1);
+static void test_held_channels()
+{
+    g_link_level = LEVEL_0;
+    const int fwd = g_forwarded, declines = g_declines;
+    for (uint16_t i = 0; i < kHeldMax; i++) {
+        l2cap_incoming(PAD, 0x0050, 0x13, uint16_t(0x70 + i));
+    }
+    CHECK(g_forwarded == fwd && g_declines == declines);  // held
+    l2cap_incoming(PAD, 0x0050, 0x13, 0x7f);
+    CHECK(g_forwarded == fwd && g_declines == declines + 1);  // full: declined, never let through
+    // Security reached: the held channels go to Bluepad32.
+    uint8_t ev[5] = {GAP_EVENT_SECURITY_LEVEL, 3};
+    little_endian_store_16(ev, 2, 0x0050);
+    ev[4] = LEVEL_2;
+    emit(ev, sizeof(ev));
+    CHECK(g_forwarded == fwd + kHeldMax);
+    g_link_level = LEVEL_2;
+}
+
+static void test_unplug_forgets()
+{
+    connect();
+    ev_conn_complete(SWITCH, 0x0083, 0);
+    l2cap_opened(SWITCH, 0x0083, 0x11, s_cid_control);
+    l2cap_opened(SWITCH, 0x0083, 0x13, s_cid_interrupt);
+    CHECK(connected());
+    const int keys = g_keys_dropped;
+    g_cmds.clear();
+    g_services[0](L2CAP_DATA_PACKET, s_cid_control, (uint8_t *)"\x15", 1);  // VIRTUAL_CABLE_UNPLUG
+    CHECK(!has_host() && !g_tlv_have && g_keys_dropped == keys + 1);
+    CHECK(count_cmd(&hci_disconnect) == 1);
+    ev_disconnect(0x0083, 0x16);
+    CHECK(!connected() && !s_link_claimed);
     connect();
     CHECK(!connecting());  // nothing to page
+}
+
+static void test_unknown_hosts()
+{
+    static const bd_addr_t PC = {0x20, 0x20, 0x30, 0x40, 0x50, 0x60};
+    static const bd_addr_t OTHER = {0x30, 0x20, 0x30, 0x40, 0x50, 0x60};
+    sync();
+    // Bonded (a phone or a pad with an odd class): never taken for the console.
+    g_have_key = true;
+    CHECK(ev_conn_request(PC, 0x5a020c) == HCI_EVENT_CONNECTION_REQUEST);
+    CHECK(!s_link_claimed);
+    // Unknown and not a peripheral: claimed, but let go if no HID channels come.
+    g_have_key = false;
+    CHECK(ev_conn_request(PC, 0x000100) == HCI_EVENT_NOP);
+    CHECK(s_link_claimed && g_watchdog_armed);
+    // A second unknown host meanwhile is hung up once its link is up.
+    CHECK(ev_conn_request(OTHER, 0x000000) == HCI_EVENT_NOP);
+    const int disc = g_disconnects;
+    ev_conn_complete(OTHER, 0x0091, 0);
+    CHECK(g_disconnects == disc + 1 && is_link_addr(PC));
+    s_connect_watchdog.process(&s_connect_watchdog);
+    CHECK(!s_link_claimed);
+    s_sync_timer.process(&s_sync_timer);
+    CHECK(!syncing());
 }
 
 int main(int argc, char **)
@@ -387,6 +497,11 @@ int main(int argc, char **)
     RUN(test_gamepad_passes_through);
     RUN(test_console_pairs);
     RUN(test_reconnect_as_master);
-    RUN(test_watchdog_and_forget);
+    RUN(test_watchdog_while_paging);
+    RUN(test_disconnect_while_paging);
+    RUN(test_qos_one_at_a_time);
+    RUN(test_held_channels);
+    RUN(test_unplug_forgets);
+    RUN(test_unknown_hosts);
     DONE("bt_hid_device");
 }
