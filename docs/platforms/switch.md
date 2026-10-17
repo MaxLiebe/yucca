@@ -281,6 +281,7 @@ Behaviour notes:
 - **Pro offsets.** The horizontal offset at 0x6080 (−688, 0, 4038) is the "flat" reference the console subtracts [S3].
 - **Axes.** Axis orientation differs per device; the Pro uses the right Joy-Con style axes [S3 images]. **UNCERTAIN** for exact sign conventions on a Pro. Validate with the console's "Calibrate motion controls" screen.
 - **Source pad without gyro.** Send a fixed gravity vector and zero gyro, or zeros.
+- **YUCCA's choice** (`components/switch_pro`): with the IMU on, every sample equals the 0x6080 horizontal offsets (a real Pro's flat reading, which the console subtracts) and gyro 0. If the console's "Calibrate motion controls" screen disagrees on hardware, switch to (0, 0, 4096).
 
 ---
 

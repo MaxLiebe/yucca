@@ -79,8 +79,8 @@ float decode_rumble(const uint8_t g[4])
 
 uint16_t stick_from_unit(float v)
 {
+    if (!(v >= -1.f)) v = -1.f;  // also NaN
     if (v > 1.f) v = 1.f;
-    if (v < -1.f) v = -1.f;
     // Positive raw values: +0.5 then truncation rounds to nearest.
     return static_cast<uint16_t>(kStickCenter + v * kStickRange + 0.5f);
 }
@@ -91,7 +91,7 @@ Protocol::Protocol(const uint8_t addr[6]) { std::memcpy(addr_, addr, 6); }
 
 void Protocol::reset()
 {
-    full_mode_ = false;
+    mode_ = 0x3f;
     imu_ = false;
     vibration_ = false;
     lights_set_ = false;
@@ -112,7 +112,7 @@ void Protocol::header(uint8_t *out, uint8_t id)
     std::memset(out, 0, kReportSize);
     out[0] = id;
     out[1] = timer_++;
-    const uint8_t level = state_.battery > 8 ? 8 : state_.battery;
+    const uint8_t level = (state_.battery > 8 ? 8 : state_.battery) & 0x0e;  // even levels; bit 0 is "charging"
     out[2] = uint8_t((level << 4) | (state_.charging ? 0x10 : 0));  // low nibble 0: Pro, on battery
     out[3] = uint8_t(state_.buttons);
     out[4] = uint8_t(state_.buttons >> 8);
@@ -124,12 +124,14 @@ void Protocol::header(uint8_t *out, uint8_t id)
 
 size_t Protocol::build_input(uint8_t *out)
 {
-    if (!full_mode_) {
+    if (!full_mode()) {
         return 0;
     }
-    header(out, 0x30);
+    header(out, mode_);
     if (imu_) {
-        // A controller lying still and flat: three identical samples.
+        // A controller lying still and flat: three identical samples equal to
+        // the horizontal offsets in SPI 0x6080, which is what a real Pro
+        // reads when flat (UNCERTAIN, see docs/platforms/switch.md 7).
         for (int s = 0; s < 3; s++) {
             uint8_t *p = out + 13 + s * 12;
             for (int i = 0; i < 3; i++) {
@@ -137,6 +139,10 @@ size_t Protocol::build_input(uint8_t *out)
                 p[i * 2 + 1] = uint8_t(uint16_t(kFlat[i]) >> 8);
             }
         }
+    }
+    if (mode_ == 0x31) {
+        std::memset(out + kReportSize, 0, kReportSizeMcu - kReportSize);  // no NFC/IR data
+        return kReportSizeMcu;
     }
     return kReportSize;
 }
@@ -156,8 +162,8 @@ void Protocol::reply_to(uint8_t sub, const uint8_t *args, size_t n, uint8_t *out
         break;
     }
     case 0x03:  // input mode
-        if (n >= 1) {
-            full_mode_ = args[0] == 0x30 || args[0] == 0x31;
+        if (n >= 1 && (args[0] == 0x30 || args[0] == 0x31 || args[0] == 0x3f)) {
+            mode_ = args[0];
         }
         break;
     case 0x04:  // trigger elapsed time: zeros

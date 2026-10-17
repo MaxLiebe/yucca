@@ -38,6 +38,8 @@ constexpr uint16_t kStickRange = 0x600;
 
 // Input report and 0x21/0x30 payload size (report id included, no 0xA1).
 constexpr size_t kReportSize = 49;
+// The 0x31 report (NFC/IR mode): the 0x30 bytes plus MCU data, here zeros.
+constexpr size_t kReportSizeMcu = 362;
 
 struct State {
     uint32_t buttons = 0;
@@ -69,11 +71,13 @@ public:
     // (kReportSize bytes) and true is returned: send it right away.
     bool handle_output(const uint8_t *data, size_t len, uint8_t *reply);
 
-    // The periodic input report (0x30), once the console asked for full mode.
-    // Returns kReportSize, or 0 while no periodic report is due.
+    // The periodic input report (0x30, or 0x31 when the console asked for
+    // NFC/IR mode) once the console asked for full mode. `out` holds
+    // kReportSizeMcu bytes. Returns the length, or 0 while none is due.
     size_t build_input(uint8_t *out);
 
-    bool full_mode() const { return full_mode_; }
+    bool full_mode() const { return mode_ == 0x30 || mode_ == 0x31; }
+    uint8_t input_mode() const { return mode_; }
     // Player lights set: the console finished its handshake.
     bool paired() const { return lights_set_; }
     uint8_t player_leds() const { return leds_; }  // bit 0 = LED 1 (flashing ones too)
@@ -95,7 +99,7 @@ private:
     uint8_t addr_[6];
     State state_;
     uint8_t timer_ = 0;
-    bool full_mode_ = false;
+    uint8_t mode_ = 0x3f;  // simple HID mode until the console sets 0x30
     bool imu_ = false;
     bool vibration_ = false;
     bool lights_set_ = false;

@@ -34,7 +34,7 @@ static void decode_stick(const uint8_t *b, int *x, int *y)
 
 static std::vector<uint8_t> spi_read(Protocol &pro, uint32_t addr, uint8_t len)
 {
-    uint8_t r[kReportSize];
+    uint8_t r[kReportSizeMcu];
     CHECK(send(pro, sub(0x10, {uint8_t(addr), uint8_t(addr >> 8), uint8_t(addr >> 16), uint8_t(addr >> 24), len}), r));
     CHECK(r[0] == 0x21 && r[13] == 0x90 && r[14] == 0x10);
     const uint8_t n = len > 0x1d ? 0x1d : len;
@@ -46,7 +46,7 @@ static std::vector<uint8_t> spi_read(Protocol &pro, uint32_t addr, uint8_t len)
 static void test_handshake()
 {
     Protocol pro(kAddr);
-    uint8_t r[kReportSize];
+    uint8_t r[kReportSizeMcu];
 
     CHECK(send(pro, sub(0x02), r));
     CHECK(r[0] == 0x21 && r[13] == 0x82 && r[14] == 0x02);
@@ -115,7 +115,7 @@ static void test_handshake()
 static void test_input_report()
 {
     Protocol pro(kAddr);
-    uint8_t r[kReportSize];
+    uint8_t r[kReportSizeMcu];
     send(pro, sub(0x03, {0x30}), r);
     State s;
     s.buttons = kA | kPlus | kZL | kLStick;
@@ -149,7 +149,7 @@ static void test_input_report()
 static void test_rumble()
 {
     Protocol pro(kAddr);
-    uint8_t r[kReportSize];
+    uint8_t r[kReportSizeMcu];
     std::vector<uint8_t> p = {0x10, 0x00, 0x00, 0x01, 0x40, 0x40, 0x28, 0xc8, 0x81, 0x72};
     CHECK(!pro.handle_output(p.data(), p.size(), r));  // rumble only: no reply
     CHECK_NEAR(pro.rumble_right(), 0.0);               // vibration not enabled yet
@@ -164,10 +164,89 @@ static void test_rumble()
     CHECK(!pro.handle_output(mcu, sizeof(mcu), r));
 }
 
+static void test_edges()
+{
+    Protocol pro(kAddr);
+    uint8_t r[kReportSizeMcu];
+
+    // Short packets: nothing read past the end, no reply.
+    const uint8_t tiny[9] = {0x01};
+    CHECK(!pro.handle_output(tiny, sizeof(tiny), r));
+    auto ten = sub(0x02);
+    CHECK(!pro.handle_output(ten.data(), 10, r));        // no subcommand byte
+    std::vector<uint8_t> spi = sub(0x10, {0x00, 0x60});
+    CHECK(pro.handle_output(spi.data(), 13, r));        // SPI read with 2 of 5 args
+    CHECK(r[13] == 0x90 && r[19] == 0);
+
+    // Input modes.
+    send(pro, sub(0x03, {0x31}), r);
+    CHECK(pro.full_mode() && pro.input_mode() == 0x31);
+    std::memset(r, 0xee, sizeof(r));
+    CHECK(pro.build_input(r) == kReportSizeMcu);
+    CHECK(r[0] == 0x31 && r[49] == 0 && r[kReportSizeMcu - 1] == 0);
+    send(pro, sub(0x03, {0x3f}), r);
+    CHECK(!pro.full_mode() && pro.build_input(r) == 0);
+    send(pro, sub(0x03, {0x77}), r);                   // unknown mode: unchanged
+    CHECK(pro.input_mode() == 0x3f);
+
+    // IMU and vibration off again.
+    send(pro, sub(0x03, {0x30}), r);
+    send(pro, sub(0x40, {0x01}), r);
+    send(pro, sub(0x40, {0x00}), r);
+    pro.build_input(r);
+    CHECK(r[13] == 0 && r[14] == 0);
+    send(pro, sub(0x48, {0x01}), r);
+    const uint8_t buzz[10] = {0x10, 0, 0x00, 0xc8, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40};
+    pro.handle_output(buzz, sizeof(buzz), r);
+    CHECK(pro.rumble_left() > 0.9f);
+    send(pro, sub(0x48, {0x00}), r);
+    CHECK_NEAR(pro.rumble_left(), 0.0);
+
+    send(pro, sub(0x06, {0x01}), r);                   // reboot-reconnect, not a disconnect
+    CHECK(!pro.disconnect_requested());
+
+    // Battery: odd levels never set the charging bit; above 8 is full.
+    State s;
+    s.battery = 7;
+    pro.set_state(s);
+    pro.build_input(r);
+    CHECK(r[2] == 0x60);
+    s.battery = 200;
+    pro.set_state(s);
+    pro.build_input(r);
+    CHECK(r[2] == 0x80);
+
+    CHECK(stick_from_unit(0.0f / 0.0f) == 0x200);        // NaN: clamped, no UB
+    CHECK(stick_from_unit(5.f) == 0xe00);
+}
+
+static void test_spi_image()
+{
+    // A read across regions, and the full calibration images byte for byte.
+    CHECK(Protocol::spi_byte(0x6011) == 0xff && Protocol::spi_byte(0x6012) == 0x03);
+    CHECK(Protocol::spi_byte(0x601a) == 0xff && Protocol::spi_byte(0x601b) == 0x01);
+    const uint8_t cal[0x19] = {0x00, 0x06, 0x60, 0x00, 0x08, 0x80, 0x00, 0x06, 0x60,  // left: max, center, min
+                               0x00, 0x08, 0x80, 0x00, 0x06, 0x60, 0x00, 0x06, 0x60,  // right: center, min, max
+                               0xff, 0x32, 0x32, 0x32, 0xff, 0xff, 0xff};
+    for (uint32_t i = 0; i < sizeof(cal); i++) {
+        CHECK(Protocol::spi_byte(0x603d + i) == cal[i]);
+    }
+    const uint8_t params[0x12] = {0x0f, 0x30, 0x61, 0x96, 0x30, 0xf3, 0xd4, 0x14, 0x54,
+                                  0x41, 0x15, 0x54, 0xc7, 0x79, 0x9c, 0x33, 0x36, 0x63};
+    for (uint32_t i = 0; i < sizeof(params); i++) {
+        CHECK(Protocol::spi_byte(0x6086 + i) == params[i]);
+        CHECK(Protocol::spi_byte(0x6098 + i) == params[i]);
+    }
+    CHECK(Protocol::spi_byte(0x60aa) == 0xff);
+    CHECK(Protocol::spi_byte(0x8026) == 0xff);
+}
+
 int main()
 {
     RUN(test_handshake);
     RUN(test_input_report);
     RUN(test_rumble);
+    RUN(test_edges);
+    RUN(test_spi_image);
     DONE("switch_pro");
 }
