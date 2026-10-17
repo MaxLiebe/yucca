@@ -40,6 +40,8 @@ constexpr uint16_t kStickRange = 0x600;
 constexpr size_t kReportSize = 49;
 // The 0x31 report (NFC/IR mode): the 0x30 bytes plus MCU data, here zeros.
 constexpr size_t kReportSizeMcu = 362;
+// The 0x3F simple HID report: id, 2 button bytes, hat, four 16-bit axes.
+constexpr size_t kHelloSize = 12;
 
 struct State {
     uint32_t buttons = 0;
@@ -76,6 +78,12 @@ public:
     // kReportSizeMcu bytes. Returns the length, or 0 while none is due.
     size_t build_input(uint8_t *out);
 
+    // Until the console sends its first output report: a neutral 0x3F
+    // report (kHelloSize bytes) to prompt the handshake, or 0 once it spoke.
+    size_t build_hello(uint8_t *out);
+    // The console has sent an output report on this link.
+    bool heard() const { return heard_; }
+
     bool full_mode() const { return mode_ == 0x30 || mode_ == 0x31; }
     uint8_t input_mode() const { return mode_; }
     // Player lights set: the console finished its handshake.
@@ -104,6 +112,7 @@ private:
     bool vibration_ = false;
     bool lights_set_ = false;
     bool disconnect_ = false;
+    bool heard_ = false;
     uint8_t leds_ = 0;
     uint8_t last_sub_ = 0;
     float rumble_left_ = 0.f;

@@ -226,6 +226,13 @@ static void test_handshake_and_reports()
     t->on_input_ready(classic_link());
     link_up(*t, true);
 
+    // Until the console speaks: a neutral 0x3F report once a second.
+    CHECK(t->next_input(out, sizeof(out), true) == sp::kHelloSize && out[0] == 0x3f && out[3] == 0x08);
+    advance(*t, 500);
+    CHECK(t->next_input(out, sizeof(out), true) == 0);
+    advance(*t, 500);
+    CHECK(t->next_input(out, sizeof(out), true) == sp::kHelloSize);
+
     // Replies go out in order, one per subcommand.
     sub(*t, 0x02);
     sub(*t, 0x08, {0x00});
@@ -238,7 +245,7 @@ static void test_handshake_and_reports()
     // Full mode before the lights: at most one report per 60 ms.
     sub(*t, 0x03, {0x30});
     CHECK(next_reply(*t) == 0x03);
-    advance(*t, 20);
+    advance(*t, 60);  // the last hello went out just before
     CHECK(t->next_input(out, sizeof(out), true) == sp::kReportSize && out[0] == 0x30);
     advance(*t, 20);
     CHECK(t->next_input(out, sizeof(out), true) == 0);

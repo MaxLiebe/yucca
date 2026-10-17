@@ -34,6 +34,10 @@ static constexpr int64_t kAckWaitMs = 200;
 // Before the player lights are set the console is busy with the handshake;
 // flooding it makes pairing fail, so full reports go out at most this often.
 static constexpr int64_t kHandshakeReportMs = 60;
+// Until the console sends its first output report, a neutral 0x3F report
+// this often. A Switch 2 that paged us sent nothing for 15 s without it;
+// joycontrol sends empty reports for the same reason.
+static constexpr int64_t kHelloMs = 1000;
 static constexpr uint8_t kReasonPowerOff = 0x15;
 // Digital ZL/ZR from analog triggers.
 static constexpr float kTriggerPress = 0.5f;
@@ -360,6 +364,13 @@ size_t SwitchTarget::next_input(uint8_t *out, size_t cap, bool periodic)
     if (!periodic || cap < sp::kReportSizeMcu) {
         return 0;
     }
+    if (!proto_->heard()) {
+        if (now_ - last_report_ms_ < kHelloMs) {
+            return 0;
+        }
+        last_report_ms_ = now_;
+        return proto_->build_hello(out);
+    }
     if (!proto_->paired() && now_ - last_report_ms_ < kHandshakeReportMs) {
         return 0;
     }
@@ -384,7 +395,7 @@ void SwitchTarget::on_link(bool up)
         link_up_ms_ = now_;
         paired_ms_ = -1;
         disconnect_seen_ms_ = -1;
-        last_report_ms_ = now_ - kHandshakeReportMs;
+        last_report_ms_ = now_ - kHelloMs;
         auto_reconnect_until_ms_ = -1;
         if (!input_present_) {
             // Never sit on the console link without a controller: as slave it

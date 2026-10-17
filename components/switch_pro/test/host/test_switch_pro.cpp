@@ -48,6 +48,16 @@ static void test_handshake()
     Protocol pro(kAddr);
     uint8_t r[kReportSizeMcu];
 
+    // Before the console speaks: a neutral 0x3F hello.
+    CHECK(!pro.heard());
+    CHECK(pro.build_hello(r) == kHelloSize);
+    CHECK(r[0] == 0x3f && r[1] == 0 && r[2] == 0 && r[3] == 0x08);
+    CHECK(r[5] == 0x80 && r[7] == 0x80 && r[9] == 0x80 && r[11] == 0x80);
+
+    CHECK(send(pro, sub(0x02), r));
+    CHECK(pro.heard() && pro.build_hello(r) == 0);
+    pro.reset();
+    CHECK(!pro.heard());
     CHECK(send(pro, sub(0x02), r));
     CHECK(r[0] == 0x21 && r[13] == 0x82 && r[14] == 0x02);
     CHECK(r[17] == 0x03);                             // Pro Controller
