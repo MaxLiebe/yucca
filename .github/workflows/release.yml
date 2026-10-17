@@ -1,9 +1,17 @@
 name: Release
 
-# Push a tag like v0.1.0 to publish firmware for the web installer.
+# Publish firmware for the web installer, either by pushing a tag like v0.1.0
+# or with the "Run workflow" button on the Actions tab (Release), which tags
+# the tip of main with the version you type.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. v1.0.0 (add -rc1 or similar for a pre-release)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -17,18 +25,42 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0  # git describe gives the firmware version
+      - name: Pick the version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            v="$INPUT_VERSION"
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::Run the release from main (picked: $GITHUB_REF)"; exit 1
+            fi
+            if ! echo "$v" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+              echo "::error::Version must look like v1.2.3 or v1.2.3-rc1 (got: $v)"; exit 1
+            fi
+            if git rev-parse -q --verify "refs/tags/$v" >/dev/null; then
+              echo "::error::Tag $v already exists"; exit 1
+            fi
+            # Tag locally so git describe (the firmware version) sees it; the
+            # release step below pushes the tag to GitHub.
+            git tag "$v"
+          else
+            v="$GITHUB_REF_NAME"
+          fi
+          echo "VERSION=$v" >> "$GITHUB_ENV"
       - name: Build and merge into one image
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.5
           target: esp32
-          command: idf.py build && cd build && python -m esptool --chip esp32 merge_bin -o yucca-${{ github.ref_name }}.bin @flash_args
+          command: idf.py build && cd build && python -m esptool --chip esp32 merge_bin -o yucca-${{ env.VERSION }}.bin @flash_args
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/yucca-${{ github.ref_name }}.bin
+          tag_name: ${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          files: build/yucca-${{ env.VERSION }}.bin
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(env.VERSION, '-') }}
       # Releases made with GITHUB_TOKEN do not trigger other workflows, so
       # start the website build (from main, which Pages may deploy) here.
       - name: Update the website
