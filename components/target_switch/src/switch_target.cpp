@@ -43,6 +43,10 @@ static constexpr uint8_t kReasonPowerOff = 0x15;
 static constexpr float kTriggerPress = 0.5f;
 // Rumble changes smaller than this are not passed to the controller.
 static constexpr float kRumbleStep = 0.05f;
+// Strength changes reach the controller at most this often; starting and
+// stopping go at once. Games retune rumble every frame, and each change is an
+// output report to the pad that competes with the console link for the radio.
+static constexpr int64_t kRumbleGapMs = 100;
 
 // Nintendo layout: A east, B south, X north, Y west. L1/R1 are L/R; ZL/ZR
 // come from the triggers below.
@@ -259,6 +263,7 @@ void SwitchTarget::tick(int64_t now_ms)
 {
     now_ = now_ms;
     if (connected_) {
+        send_feedback();  // strength changes held back by kRumbleGapMs
         if (we_dropped_) {
             // Hanging up; the disconnect event follows.
         } else if (proto_ && proto_->disconnect_requested()) {
@@ -314,12 +319,16 @@ void SwitchTarget::send_feedback()
     const uint8_t leds = proto_ && connected_ ? proto_->player_leds() : 0;
     const float left = proto_ && connected_ ? proto_->rumble_left() : 0.f;
     const float right = proto_ && connected_ ? proto_->rumble_right() : 0.f;
-    const bool rumble_changed = std::fabs(left - rumble_left_sent_) >= kRumbleStep ||
-                                std::fabs(right - rumble_right_sent_) >= kRumbleStep ||
-                                ((left == 0.f) != (rumble_left_sent_ == 0.f)) ||
-                                ((right == 0.f) != (rumble_right_sent_ == 0.f));
+    const bool on_off = ((left == 0.f) != (rumble_left_sent_ == 0.f)) ||
+                        ((right == 0.f) != (rumble_right_sent_ == 0.f));
+    const bool stronger = std::fabs(left - rumble_left_sent_) >= kRumbleStep ||
+                          std::fabs(right - rumble_right_sent_) >= kRumbleStep;
+    const bool rumble_changed = on_off || (stronger && now_ - rumble_sent_ms_ >= kRumbleGapMs);
     if (leds == leds_sent_ && !rumble_changed) {
         return;
+    }
+    if (rumble_changed) {
+        rumble_sent_ms_ = now_;
     }
     leds_sent_ = leds;
     rumble_left_sent_ = left;

@@ -343,6 +343,12 @@ static void test_rumble_feedback()
     const int n = listener.feedbacks;
     t->on_output(buzz, sizeof(buzz));
     CHECK(listener.feedbacks == n);  // unchanged: not resent
+    // Strength changes are held back to one per 100 ms, then sent by tick.
+    const uint8_t soft[10] = {0x10, 0, 0x00, 0x81, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40};
+    t->on_output(soft, sizeof(soft));
+    CHECK(listener.feedbacks == n);
+    advance(*t, 120);
+    CHECK(listener.feedbacks == n + 1 && listener.feedback.rumble_left < 0.5f);
     const uint8_t quiet[10] = {0x10, 0, 0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40};
     t->on_output(quiet, sizeof(quiet));
     CHECK(listener.feedback.rumble_left == 0.f);

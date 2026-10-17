@@ -1,5 +1,6 @@
 #include "yucca/switch_pro.h"
 
+#include <cmath>
 #include <cstring>
 
 namespace yucca::switchpro {
@@ -66,15 +67,26 @@ uint8_t Protocol::spi_byte(uint32_t addr)
 
 // --- Rumble
 
+// Amplitudes are sent as a 0..100 step on a log scale (docs/platforms/switch.md
+// §3.5): 2^(1/4) per step up to ~0.115, 2^(1/16) up to ~0.23, 2^(1/32) up to 1.0.
+static float amp_from_step(int s)
+{
+    if (s <= 0) return 0.f;
+    if (s >= 100) return 1.f;
+    if (s >= 32) return std::exp2((s - 100) / 32.f);
+    const float at32 = std::exp2(-68 / 32.f);
+    if (s >= 16) return at32 * std::exp2((s - 32) / 16.f);
+    return at32 * std::exp2(-1.f) * std::exp2((s - 16) / 4.f);
+}
+
 float decode_rumble(const uint8_t g[4])
 {
     if (g[0] == 0x00 && g[1] == 0x01 && g[2] == 0x40 && g[3] == 0x40) {
         return 0.f;
     }
-    float hi = (g[1] & 0xfe) / float(0xc8);
-    float lo = (int(g[3]) - 0x40) / float(0x32);
-    float v = hi > lo ? hi : lo;
-    return v < 0.f ? 0.f : (v > 1.f ? 1.f : v);
+    const float hi = amp_from_step(g[1] >> 1);
+    const float lo = amp_from_step((int(g[3]) - 0x40) * 2 + (g[2] >> 7));
+    return hi > lo ? hi : lo;
 }
 
 uint16_t stick_from_unit(float v)
