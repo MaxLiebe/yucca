@@ -151,7 +151,7 @@ static void test_feedback_reaches_controller()
     CHECK(r.input.feedback.player_leds == 0x2);
     f.rumble_left = 1.f;
     r.app.on_target_feedback(f);
-    CHECK_NEAR(r.input.feedback.rumble_left, 0.6);  // default strength 60 %
+    CHECK_NEAR(r.input.feedback.rumble_left, 0.3);  // default strength 30 %
     r.settings.set_int(keys::kRumble, 0);
     r.app.on_target_feedback(f);
     CHECK_NEAR(r.input.feedback.rumble_left, 0.0);

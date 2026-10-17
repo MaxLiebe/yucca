@@ -1025,12 +1025,25 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
         }
         if (s_link_dropping) {
             gap_disconnect(s_link_handle);  // disconnect() came while paging
+        } else if (s_profile->console_master) {
+            // No sniff, whoever paged. A Switch 2 link (ESP32 slave, gamepad
+            // links beside it) stopped carrying reports for seconds at a
+            // time (v0.1.8 logs); missed sniff anchors are the suspect.
+            queue_policy(s_link_handle, LM_LINK_POLICY_ENABLE_ROLE_SWITCH);
         } else if (s_link_outgoing && s_link_master) {
-            // No sniff; stay master unless the console must be.
-            queue_policy(s_link_handle, s_profile->console_master ? LM_LINK_POLICY_ENABLE_ROLE_SWITCH : 0);
+            queue_policy(s_link_handle, 0);  // no sniff; stay master
         }
         break;
     }
+    case HCI_EVENT_MODE_CHANGE:
+        if (s_link_handle != HCI_CON_HANDLE_INVALID &&
+            hci_event_mode_change_get_handle(packet) == s_link_handle) {
+            ESP_LOGI(TAG, "Console link mode %u (status 0x%02x, interval %u slots)",
+                     unsigned(hci_event_mode_change_get_mode(packet)),
+                     unsigned(hci_event_mode_change_get_status(packet)),
+                     unsigned(hci_event_mode_change_get_interval(packet)));
+        }
+        break;
     case HCI_EVENT_ROLE_CHANGE: {
         bd_addr_t addr;
         hci_event_role_change_get_bd_addr(packet, addr);
