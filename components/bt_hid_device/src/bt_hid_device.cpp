@@ -338,6 +338,33 @@ void report_timer_stop()
 // Send what the listener has. Replies go out as soon as the channel can take
 // them; a periodic report only when the timer fired, and is dropped (not
 // queued) when the radio is busy, so reports never pile up.
+// Periodic reports in a row the radio had no room for. Logged so a hardware
+// log shows whether the console link or the controller froze.
+uint32_t s_blocked_ticks;
+uint32_t s_longest_block_ms;
+constexpr uint32_t kBlockLogMs = 300;
+
+void note_blocked()
+{
+    const uint32_t before = s_blocked_ticks * s_profile->report_period_ms;
+    s_blocked_ticks++;
+    if (before < kBlockLogMs && s_blocked_ticks * s_profile->report_period_ms >= kBlockLogMs) {
+        ESP_LOGW(TAG, "Console link blocked: no input report sent for %u ms", unsigned(kBlockLogMs));
+    }
+}
+
+void note_sent()
+{
+    const uint32_t ms = s_blocked_ticks * s_profile->report_period_ms;
+    s_blocked_ticks = 0;
+    if (ms >= kBlockLogMs) {
+        ESP_LOGW(TAG, "Console link moving again after ~%u ms", unsigned(ms));
+    }
+    if (ms > s_longest_block_ms) {
+        s_longest_block_ms = ms;
+    }
+}
+
 void send_reports(bool periodic)
 {
     static uint8_t pkt[kMaxReport + 1];
@@ -355,6 +382,9 @@ void send_reports(bool periodic)
     }
     for (int budget = 4; budget > 0; budget--) {
         if (!l2cap_can_send_packet_now(s_cid_interrupt)) {
+            if (periodic) {
+                note_blocked();
+            }
             l2cap_request_can_send_now_event(s_cid_interrupt);
             return;
         }
@@ -364,7 +394,9 @@ void send_reports(bool periodic)
         }
         periodic = false;
         pkt[0] = 0xa1;  // DATA | INPUT
-        l2cap_send(s_cid_interrupt, pkt, uint16_t(n + 1));
+        if (l2cap_send(s_cid_interrupt, pkt, uint16_t(n + 1)) == ERROR_CODE_SUCCESS) {
+            note_sent();
+        }
     }
 }
 
@@ -436,6 +468,7 @@ void on_channels_up()
         return;
     }
     s_link_up = true;
+    s_blocked_ticks = 0;
     store_host(s_link_addr);
     end_sync(true);
     btstack_run_loop_remove_timer(&s_connect_watchdog);
@@ -1151,6 +1184,7 @@ void forget() { forget_host(); }
 
 bool link_is_master() { return s_link_up && s_link_master; }
 uint8_t last_disconnect_reason() { return s_last_reason; }
+uint32_t longest_block_ms() { return s_longest_block_ms; }
 void flush() { send_reports(false); }
 
 void tune_link(hci_con_handle_t handle, const bd_addr_t addr)

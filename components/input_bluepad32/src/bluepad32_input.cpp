@@ -34,6 +34,10 @@ InputListener *s_listener;
 bool s_ble = true;
 Feedback s_feedback;
 int64_t s_rumble_sent_ms;
+// Last report from the pad, to log freezes on the controller's side.
+int64_t s_data_ms;
+bool s_silent;
+constexpr int64_t kSilentLogMs = 300;
 // Scanning can only start once Bluepad32 finished its setup.
 bool s_init_done;
 void (*s_console_hook)();
@@ -168,6 +172,12 @@ void platform_on_controller_data(uni_hid_device_t *d, uni_controller_t *ctl)
     if (d != s_pad || ctl->klass != UNI_CONTROLLER_CLASS_GAMEPAD || s_listener == nullptr) {
         return;
     }
+    const int64_t now = now_ms();
+    if (s_silent) {
+        s_silent = false;
+        ESP_LOGW(TAG, "Controller reports again after %d ms", int(now - s_data_ms));
+    }
+    s_data_ms = now;
     const uni_gamepad_t &gp = ctl->gamepad;
     bp32::RawPad raw;
     raw.dpad = gp.dpad;
@@ -270,6 +280,10 @@ void Bluepad32Input::forget_all()
 
 void Bluepad32Input::tick(int64_t now)
 {
+    if (s_pad != nullptr && s_data_ms != 0 && !s_silent && now - s_data_ms >= kSilentLogMs) {
+        s_silent = true;
+        ESP_LOGW(TAG, "Controller sent no report for %d ms", int(kSilentLogMs));
+    }
     if (rumbling(s_feedback) && now - s_rumble_sent_ms >= kRumbleRefreshMs) {
         pad_rumble(s_feedback);
     }

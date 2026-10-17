@@ -328,7 +328,13 @@ static void test_console_pairs()
     const int calls = g_listener.periodic_calls;
     tick_report();
     CHECK(g_listener.periodic_calls == calls && g_can_send_requests > 0);
+    for (int i = 0; i < 40; i++) {
+        tick_report();
+    }
     g_can_send = true;
+    CHECK(longest_block_ms() == 0);  // counted once a report gets through
+    tick_report();
+    CHECK(longest_block_ms() >= 300);
 
     // Control channel: SET_PROTOCOL is acknowledged, GET_REPORT refused.
     g_sent.clear();
