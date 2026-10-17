@@ -36,6 +36,7 @@ struct FakeTarget : Target {
     TargetListener *listener = nullptr;
     bool is_syncing = false;
     int syncs = 0, forgets = 0, ready = 0, gone = 0, updates = 0;
+    uint32_t last_buttons = 0;
     const char *id() const override { return "fake"; }
     const char *name() const override { return "Fake"; }
     void set_fallback_handler(PacketHandler) override {}
@@ -52,7 +53,11 @@ struct FakeTarget : Target {
     void forget() override { forgets++; }
     void on_input_ready(const InputLink &) override { ready++; }
     void on_input_gone() override { gone++; }
-    void update(const GamepadState &) override { updates++; }
+    void update(const GamepadState &s) override
+    {
+        updates++;
+        last_buttons = s.buttons;
+    }
     void tick(int64_t) override {}
 };
 
@@ -249,6 +254,26 @@ static void test_menu_same_console_and_timeout()
     CHECK(!r.app.menu_open());
 }
 
+static void test_menu_combo_hidden_and_sync_combo_ignored()
+{
+    Rig r;
+    r.controller_ready();
+    GamepadState s;
+    s.set(Button::Select, true);
+    s.set(Button::Home, true);
+    s.set(Button::South, true);
+    r.app.on_input_state(s);
+    CHECK(r.target.last_buttons == bit(Button::South));  // console never sees Home
+    r.run(3100);
+    CHECK(r.app.menu_open());
+    GamepadState sync;
+    sync.set(Button::Select, true);
+    sync.set(Button::Start, true);
+    r.app.on_input_state(sync);
+    r.run(3500);
+    CHECK(r.target.syncs == 0);  // the sync combo is off inside the menu
+}
+
 static void test_console_requests_run_on_tick()
 {
     Rig r;
@@ -267,6 +292,7 @@ int main()
     RUN(test_menu_switches_console_and_restarts);
     RUN(test_menu_wraps_and_cancels);
     RUN(test_menu_same_console_and_timeout);
+    RUN(test_menu_combo_hidden_and_sync_combo_ignored);
     RUN(test_forget_tells_target_controller_is_gone);
     RUN(test_combo_waits_for_open_sync_window);
     RUN(test_scans_until_controller_ready);

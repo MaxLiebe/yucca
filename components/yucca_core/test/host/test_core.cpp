@@ -111,7 +111,12 @@ static void test_schema()
     CHECK(schema_set(st, keys::kTarget, "ps5") != nullptr);
     CHECK(schema_set(st, keys::kTarget, "switch") == nullptr);
     CHECK(st.get_str(keys::kTarget, "") == "switch");
-    CHECK(schema_set(st, keys::kFaceLayout, "1") == nullptr);
+    bool restart = false;
+    CHECK(schema_set(st, keys::kFaceLayout, "1", &restart) == nullptr);
+    CHECK(restart);  // targets read face_layout at boot
+    restart = true;
+    CHECK(schema_set(st, "nope", "1", &restart) != nullptr);
+    CHECK(restart);  // untouched on error
     CHECK(st.get_int(keys::kFaceLayout, 0) == 1);  // stored as int for the targets
     const SettingSpec *spec = schema_find("wii_mirror");
     CHECK(spec != nullptr && schema_get(st, *spec) == "1");  // default

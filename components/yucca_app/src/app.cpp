@@ -66,7 +66,7 @@ void App::tick(int64_t now_ms, bool boot_button)
 
     // Select + Start held: sync again (e.g. to pair with another console).
     const uint32_t combo = bit(Button::Select) | bit(Button::Start);
-    if (input_.ready() && (buttons_ & combo) == combo) {
+    if (!menu_open_ && input_.ready() && (buttons_ & combo) == combo) {
         if (combo_since_ms_ < 0) {
             combo_since_ms_ = now_;
             combo_fired_ = false;
@@ -143,6 +143,15 @@ void App::on_input_state(const GamepadState &state)
     buttons_ = state.buttons;
     if (menu_open_) {
         menu_input(state);
+        return;
+    }
+    // While Select + Home is held for the menu, the console sees neither, so
+    // its own Home menu does not open first.
+    const uint32_t menu_combo = bit(Button::Select) | bit(Button::Home);
+    if (target_count_ > 1 && (state.buttons & menu_combo) == menu_combo) {
+        GamepadState held = state;
+        held.buttons &= ~menu_combo;
+        target_.update(held);
         return;
     }
     target_.update(state);

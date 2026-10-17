@@ -35,8 +35,9 @@ const SettingSpec *schema(size_t *count);
 const SettingSpec *schema_find(const char *key);
 
 // Validate and store `value` for `key`. Returns nullptr on success, else a
-// short error message.
-const char *schema_set(Settings &settings, const char *key, const char *value);
+// short error message. On success, `*restart` (if given) says whether the
+// device must restart for the value to take effect.
+const char *schema_set(Settings &settings, const char *key, const char *value, bool *restart = nullptr);
 
 // Current value of a setting as text (its default when unset).
 std::string schema_get(const Settings &settings, const SettingSpec &spec);
