@@ -6,7 +6,11 @@ Work in progress. Builds on [wii-gamepad-adapter](https://github.com/MaxLiebe/wi
 
 ## Use it
 
-You need an **original ESP32** board (ESP32-WROOM-32 / WROVER; the S3, C3, C6 and H2 lack Bluetooth Classic) and ESP-IDF 5.5 or 6.x. A web installer is coming.
+You need an **original ESP32** board (ESP32-WROOM-32 / WROVER; the S3, C3, C6 and H2 lack Bluetooth Classic).
+
+**Easiest:** open the [web installer](https://maxliebe.github.io/yucca/) in Chrome or Edge, click Install, then pick your console on the same page.
+
+**From source** (ESP-IDF 5.5 or 6.x):
 
 ```bash
 git clone --recursive https://github.com/MaxLiebe/yucca.git

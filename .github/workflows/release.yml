@@ -1,0 +1,30 @@
+name: Release
+
+# Push a tag like v0.1.0 to publish firmware for the web installer.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0  # git describe gives the firmware version
+      - name: Build and merge into one image
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5
+          target: esp32
+          command: idf.py build && cd build && python -m esptool --chip esp32 merge_bin -o yucca-${{ github.ref_name }}.bin @flash_args
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/yucca-${{ github.ref_name }}.bin
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

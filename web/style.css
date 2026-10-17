@@ -1,0 +1,70 @@
+:root {
+  --bg: #fbfaf7;
+  --fg: #1d1d1b;
+  --muted: #66625a;
+  --card: #ffffff;
+  --line: #e4e0d8;
+  --accent: #2f7d4f;
+  --accent-fg: #ffffff;
+  --danger: #b3412f;
+  --ok: #2f7d4f;
+  --wip: #b7791f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161614;
+    --fg: #ecebe6;
+    --muted: #a19d94;
+    --card: #1f1f1c;
+    --line: #34332f;
+    --accent: #5fb383;
+    --accent-fg: #0e1a12;
+    --danger: #e0765f;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+header, main, footer { max-width: 760px; margin: 0 auto; padding: 0 16px; }
+header { padding-top: 40px; }
+h1 { font-size: 2.4rem; margin: 0; letter-spacing: 0.02em; }
+.tagline { color: var(--muted); margin-top: 4px; }
+section {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 20px 0;
+}
+h2 { margin-top: 0; font-size: 1.25rem; }
+.step {
+  display: inline-grid; place-items: center;
+  width: 1.6em; height: 1.6em; margin-right: 0.4em;
+  border-radius: 50%; background: var(--accent); color: var(--accent-fg); font-size: 0.85em;
+}
+button {
+  font: inherit; padding: 8px 16px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer;
+}
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button.danger { color: var(--danger); }
+button:disabled { opacity: 0.5; cursor: default; }
+.hint { color: var(--muted); font-size: 0.92rem; }
+.notice { border-color: var(--danger); color: var(--danger); }
+form { display: grid; gap: 14px; margin: 16px 0; }
+label { display: grid; gap: 4px; font-weight: 600; }
+label.check { display: flex; gap: 8px; align-items: center; font-weight: 400; }
+select { font: inherit; padding: 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+#device { display: flex; gap: 8px; flex-wrap: wrap; }
+kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 0.9em; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+footer { color: var(--muted); padding-bottom: 40px; font-size: 0.9rem; }
+a { color: var(--accent); }

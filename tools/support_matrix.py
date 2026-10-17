@@ -3,8 +3,10 @@
 
   --check   fail if support.yaml is invalid or README.md is out of date (CI)
   --write   rewrite the table in README.md
+  --json F  write the matrix as JSON for the website
   (none)    print the table
 """
+import json
 import sys
 from pathlib import Path
 
@@ -85,6 +87,14 @@ def main():
             print("README.md support table is out of date: run tools/support_matrix.py --write",
                   file=sys.stderr)
             return 1
+        return 0
+    if "--json" in sys.argv:
+        out = Path(sys.argv[sys.argv.index("--json") + 1])
+        out.write_text(json.dumps({
+            "consoles": data["consoles"],
+            "controllers": data["controllers"],
+            "cells": list(cells.values()),
+        }, indent=1), encoding="utf-8")
         return 0
     if "--write" in sys.argv:
         readme_path.write_text(splice(readme, table), encoding="utf-8")
