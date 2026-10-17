@@ -32,6 +32,9 @@ struct Profile {
     uint16_t pnp_version;
     uint32_t host_tag;           // TLV tag that remembers the console
     uint16_t report_period_ms;   // periodic input reports while connected
+    // The console must stay master of its link: pages allow it to take over
+    // (a Switch 2 drops a controller that refuses the role switch).
+    bool console_master;
 };
 
 class Listener {

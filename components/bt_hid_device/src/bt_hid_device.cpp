@@ -972,7 +972,8 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
         if (s_link_dropping) {
             gap_disconnect(s_link_handle);  // disconnect() came while paging
         } else if (s_link_outgoing && s_link_master) {
-            queue_policy(s_link_handle, 0);  // stay master, no sniff
+            // No sniff; stay master unless the console must be.
+            queue_policy(s_link_handle, s_profile->console_master ? LM_LINK_POLICY_ENABLE_ROLE_SWITCH : 0);
         }
         break;
     }
@@ -981,6 +982,7 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
         hci_event_role_change_get_bd_addr(packet, addr);
         if (is_link_addr(addr) && hci_event_role_change_get_status(packet) == ERROR_CODE_SUCCESS) {
             s_link_master = hci_event_role_change_get_role(packet) == HCI_ROLE_MASTER;
+            set_pads_relaxed(!s_link_master);
         }
         break;
     }
@@ -1077,9 +1079,11 @@ void connect()
     }
     claim_link(s_host_addr, true);
     if (s_fallback != nullptr) {
-        // Page with role switch off so the ESP32 stays master of both links.
-        gap_set_allow_role_switch(false);
-        s_restore_role_switch = true;
+        if (!s_profile->console_master) {
+            // Page with role switch off so the ESP32 stays master of both links.
+            gap_set_allow_role_switch(false);
+            s_restore_role_switch = true;
+        }
         gap_set_page_timeout(kPageTimeoutConsole);
         s_restore_page_timeout = true;
     }

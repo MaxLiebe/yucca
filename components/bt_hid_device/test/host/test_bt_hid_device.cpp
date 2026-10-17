@@ -484,6 +484,26 @@ static void test_pads_relaxed_while_slave()
     end_sync(true);
 }
 
+// Switch 2: pages let the console take the master role.
+static void test_console_master_page()
+{
+    Profile p2 = kProfile;
+    p2.console_master = true;
+    begin(p2, g_listener);
+    connect();
+    CHECK(connecting() && g_role_switch && g_page_timeout == 0x2000);
+    ev_conn_complete(SWITCH, 0x0082, 0);
+    CHECK(!s_pads_relaxed);  // we paged: master until the console switches roles
+    uint8_t ev[10] = {HCI_EVENT_ROLE_CHANGE, 8, 0};
+    put_addr(ev + 3, SWITCH);
+    ev[9] = HCI_ROLE_SLAVE;
+    emit(ev, sizeof(ev));
+    CHECK(!s_link_master && s_pads_relaxed);
+    ev_disconnect(0x0082, 0x13);
+    CHECK(!connecting() && !s_pads_relaxed);
+    begin(kProfile, g_listener);
+}
+
 static void test_held_channels()
 {
     g_link_level = LEVEL_0;
@@ -596,6 +616,7 @@ int main(int argc, char **)
     RUN(test_disconnect_while_paging);
     RUN(test_qos_one_at_a_time);
     RUN(test_pads_relaxed_while_slave);
+    RUN(test_console_master_page);
     RUN(test_held_channels);
     RUN(test_unplug_forgets);
     RUN(test_unknown_hosts);
