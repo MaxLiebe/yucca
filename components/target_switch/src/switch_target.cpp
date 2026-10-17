@@ -93,6 +93,8 @@ static bthid::Profile make_profile(SwitchTarget::Model model)
     p.pnp_version = 0x0001;
     p.host_tag = model == SwitchTarget::Model::Switch2 ? kHostTagSwitch2 : kHostTagSwitch;
     p.report_period_ms = 15;
+    // A Switch 2 refused every page that kept the ESP32 master (reason 0x13).
+    p.console_master = model == SwitchTarget::Model::Switch2;
     return p;
 }
 
@@ -274,12 +276,14 @@ void SwitchTarget::tick(int64_t now_ms)
             }
         } else if (proto_ && proto_->paired() && paired_ms_ < 0) {
             paired_ms_ = now_;
-        } else if (!bthid::link_is_master() &&
+        } else if (model_ == Model::Switch && !bthid::link_is_master() &&
                    ((paired_ms_ >= 0 && now_ - paired_ms_ >= kPairedSettleMs) ||
                     now_ - link_up_ms_ >= kSlaveGraceMs)) {
             // The console paged us (pairing). As its slave the ESP32 radio
             // starves the controller link, so hang up once it registered us
             // and page it ourselves: the pager stays master of both links.
+            // Not on a Switch 2: it refuses pages from a master, so we stay
+            // its slave (bt_hid polls the gamepads less often meanwhile).
             ESP_LOGI(TAG, "%s paired with the ESP32 as slave; reconnecting as master.", name());
             repage_at_ms_ = now_;  // hand-off pending: page again once it is down
             hang_up();

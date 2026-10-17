@@ -173,13 +173,14 @@ static void test_profile()
     CHECK(std::strcmp(p.name, "Pro Controller") == 0 && p.cod == 0x002508);
     CHECK(p.descriptor_len == 170 && p.descriptor[0] == 0x05 && p.descriptor[169] == 0xc0);
     CHECK(p.subclass == 0x08 && p.country == 0x21 && p.pnp_vendor == 0x057e && p.pnp_product == 0x2009);
-    CHECK(p.report_period_ms == 15);
+    CHECK(p.report_period_ms == 15 && !p.console_master);
     const uint32_t tag = p.host_tag;
     delete t;
 
     t = make(false, SwitchTarget::Model::Switch2);
     CHECK(std::strcmp(t->id(), "switch2") == 0 && std::strcmp(t->name(), "Switch 2") == 0);
     CHECK(g_bt.profile->host_tag != tag);  // each console remembered separately
+    CHECK(g_bt.profile->console_master);
     delete t;
 }
 
@@ -386,6 +387,20 @@ static void test_slave_pairing_repages_as_master()
     delete t;
 }
 
+// Switch 2: stays on the link it paired on, as slave.
+static void test_switch2_stays_slave()
+{
+    SwitchTarget *t = make(false, SwitchTarget::Model::Switch2);
+    t->on_input_ready(classic_link());
+    g_bt.host = true;
+    link_up(*t, false);
+    handshake(*t);
+    advance(*t, 20000);
+    CHECK(g_bt.disconnect_calls == 0);
+    CHECK(listener.connected == 1);
+    delete t;
+}
+
 static void test_slave_grace_timeout()
 {
     SwitchTarget *t = make(false);
@@ -482,6 +497,7 @@ int main()
     RUN(test_buttons_and_sticks);
     RUN(test_rumble_feedback);
     RUN(test_slave_pairing_repages_as_master);
+    RUN(test_switch2_stays_slave);
     RUN(test_slave_grace_timeout);
     RUN(test_console_sleep);
     RUN(test_ack_wait_capped);
