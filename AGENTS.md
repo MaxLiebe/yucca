@@ -25,7 +25,7 @@ v1 controllers: DS3, DS4, DualSense, Wiimote + extensions, Wii U Pro, Switch Pro
 | `components/switch_pro/` | Switch Pro Controller protocol (subcommand replies, 0x30 reports, rumble), no Bluetooth. Host-tested. |
 | `components/target_switch/` | Switch and Switch 2: Switch Pro Controller via `switch_pro` + `bt_hid_device`, reconnect policy. Host-tested against a fake transport. |
 | `components/target_*/` | Other consoles, one per emulated device. |
-| `web/` | Installer + settings website (GitHub Pages, ESP Web Tools, Web Serial). Built by `.github/workflows/pages.yml`. |
+| `web/` | Installer, settings and serial monitor website (GitHub Pages, esptool-js, Web Serial). Design rules in `web/DESIGN.md`. Built by `.github/workflows/pages.yml`. |
 | `support.yaml` | Source of truth for what works. README table is generated from it. |
 | `tools/support_matrix.py` | Validates `support.yaml`, renders the README table. |
 | `docs/architecture.md` | Interfaces and data flow. |
