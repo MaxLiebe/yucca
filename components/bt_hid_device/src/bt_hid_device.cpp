@@ -993,6 +993,30 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
                      hci_event_authentication_complete_get_status(packet));
         }
         break;
+    case HCI_EVENT_LINK_KEY_REQUEST: {
+        bd_addr_t addr;
+        hci_event_link_key_request_get_bd_addr(packet, addr);
+        if (is_link_addr(addr)) {
+            link_key_t key;
+            link_key_type_t type;
+            ESP_LOGI(TAG, "Console asks for the link key (%s)",
+                     gap_get_link_key_for_bd_addr(addr, key, &type) ? "have it" : "none stored");
+        }
+        break;
+    }
+    case HCI_EVENT_LINK_KEY_NOTIFICATION: {
+        // BTstack skips storing a key when neither side asked for bonding,
+        // and a Switch 2 refused our reconnect with 0x05 (authentication
+        // failure) after a good pairing. The console keeps the key, so we do.
+        bd_addr_t addr;
+        hci_event_link_key_request_get_bd_addr(packet, addr);  // same layout
+        if (size >= 25 && is_link_addr(addr) && packet[24] != CHANGED_COMBINATION_KEY &&
+            !btstack_is_null(&packet[8], 16)) {
+            gap_store_link_key_for_bd_addr(addr, &packet[8], link_key_type_t(packet[24]));
+            ESP_LOGI(TAG, "Stored the console's link key (type %u)", packet[24]);
+        }
+        break;
+    }
     case GAP_EVENT_SECURITY_LEVEL:
         release_held(gap_event_security_level_get_handle(packet), gap_event_security_level_get_security_level(packet));
         break;

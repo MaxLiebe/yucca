@@ -57,6 +57,9 @@ static uint16_t g_page_timeout;
 void gap_set_page_timeout(uint16_t t) { g_page_timeout = t; }
 static bool g_have_key;
 bool gap_get_link_key_for_bd_addr(bd_addr_t, link_key_t, link_key_type_t *) { return g_have_key; }
+static int g_keys_stored;
+static uint8_t g_stored_type;
+void gap_store_link_key_for_bd_addr(bd_addr_t, link_key_t, link_key_type_t t) { g_keys_stored++; g_stored_type = t; }
 static int g_keys_dropped;
 void gap_drop_link_key_for_bd_addr(bd_addr_t) { g_keys_dropped++; }
 static gap_security_level_t g_gap_level = LEVEL_2, g_level_at_create;
@@ -504,6 +507,29 @@ static void test_console_master_page()
     begin(kProfile, g_listener);
 }
 
+// The console's link key is kept even when BTstack would not store it.
+static void test_console_link_key_stored()
+{
+    connect();
+    ev_conn_complete(SWITCH, 0x0083, 0);
+    uint8_t ev[25] = {HCI_EVENT_LINK_KEY_NOTIFICATION, 23};
+    put_addr(ev + 2, SWITCH);
+    ev[24] = UNAUTHENTICATED_COMBINATION_KEY_GENERATED_FROM_P192;
+    emit(ev, sizeof(ev));
+    CHECK(g_keys_stored == 0);  // all-zero key: ignored
+    ev[8] = 0x5a;
+    emit(ev, sizeof(ev));
+    CHECK(g_keys_stored == 1 && g_stored_type == UNAUTHENTICATED_COMBINATION_KEY_GENERATED_FROM_P192);
+    ev[24] = CHANGED_COMBINATION_KEY;
+    emit(ev, sizeof(ev));
+    CHECK(g_keys_stored == 1);
+    put_addr(ev + 2, PAD);  // a gamepad's key is BTstack's business
+    ev[24] = UNAUTHENTICATED_COMBINATION_KEY_GENERATED_FROM_P192;
+    emit(ev, sizeof(ev));
+    CHECK(g_keys_stored == 1);
+    ev_disconnect(0x0083, 0x13);
+}
+
 static void test_held_channels()
 {
     g_link_level = LEVEL_0;
@@ -617,6 +643,7 @@ int main(int argc, char **)
     RUN(test_qos_one_at_a_time);
     RUN(test_pads_relaxed_while_slave);
     RUN(test_console_master_page);
+    RUN(test_console_link_key_stored);
     RUN(test_held_channels);
     RUN(test_unplug_forgets);
     RUN(test_unknown_hosts);
