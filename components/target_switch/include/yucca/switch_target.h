@@ -83,6 +83,7 @@ private:
     uint8_t leds_sent_ = 0;
     float rumble_left_sent_ = 0;
     float rumble_right_sent_ = 0;
+    int64_t rumble_sent_ms_ = -1000000;
 };
 
 }  // namespace yucca

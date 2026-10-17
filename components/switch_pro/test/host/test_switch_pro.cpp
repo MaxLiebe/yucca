@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -169,7 +170,11 @@ static void test_rumble()
     CHECK_NEAR(pro.rumble_left(), 0.0);
     CHECK_NEAR(pro.rumble_right(), 1.0);
     const uint8_t mid[4] = {0x00, 0x64, 0x40, 0x40};
-    CHECK_NEAR(decode_rumble(mid), 0.5);
+    CHECK(std::fabs(decode_rumble(mid) - 0.338f) < 0.01f);   // log scale, not linear
+    const uint8_t low[4] = {0x00, 0x21, 0x40, 0x40};           // step 16
+    CHECK(std::fabs(decode_rumble(low) - 0.115f) < 0.01f);
+    const uint8_t lf[4] = {0x00, 0x01, 0xc0, 0x72};            // low band, step 101
+    CHECK_NEAR(decode_rumble(lf), 1.0);
     const uint8_t mcu[2] = {0x11, 0x00};
     CHECK(!pro.handle_output(mcu, sizeof(mcu), r));
 }

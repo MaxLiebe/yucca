@@ -53,11 +53,9 @@ btstack_timer_source_t s_report_timer;
 bool s_report_timer_active;
 btstack_timer_source_t s_sync_timer;
 btstack_timer_source_t s_connect_watchdog;
-// The console's link key, written to flash only once the handshake is over:
-// with v0.1.4 a Switch 2 dropped the pairing link (0x08) right after the
-// key was written during it.
-btstack_timer_source_t s_key_timer;
-constexpr uint32_t kKeyWriteDelayMs = 5000;
+// The console's link key, written to flash only once the console link is
+// down: a Switch 2 dropped the link (0x08) after the key was written while it
+// was up, both during the handshake (v0.1.4) and 5 s after it (v0.1.5).
 bool s_key_pending;
 bd_addr_t s_key_addr;
 link_key_t s_key;
@@ -65,7 +63,6 @@ link_key_type_t s_key_type;
 
 void write_pending_key()
 {
-    btstack_run_loop_remove_timer(&s_key_timer);
     if (!s_key_pending) {
         return;
     }
@@ -73,8 +70,6 @@ void write_pending_key()
     gap_store_link_key_for_bd_addr(s_key_addr, s_key, s_key_type);
     ESP_LOGI(TAG, "Stored the console's link key (type %u)", unsigned(s_key_type));
 }
-
-void key_timer_cb(btstack_timer_source_t *) { write_pending_key(); }
 
 bd_addr_t s_host_addr;
 bool s_have_host;
@@ -1042,10 +1037,6 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
             std::memcpy(s_key, &packet[8], sizeof(s_key));
             s_key_type = link_key_type_t(packet[24]);
             s_key_pending = true;
-            btstack_run_loop_remove_timer(&s_key_timer);
-            btstack_run_loop_set_timer_handler(&s_key_timer, key_timer_cb);
-            btstack_run_loop_set_timer(&s_key_timer, kKeyWriteDelayMs);
-            btstack_run_loop_add_timer(&s_key_timer);
         }
         break;
     }
