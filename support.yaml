@@ -44,6 +44,24 @@ cells:
   - {controller: joycon, console: wiiu, status: works-in-ci}
   - {controller: 8bitdo, console: wiiu, status: works-in-ci}
   - {controller: stadia, console: wiiu, status: works-in-ci}
+  - {controller: ds3, console: switch, status: works-in-ci}
+  - {controller: ds4, console: switch, status: works-in-ci}
+  - {controller: dualsense, console: switch, status: works-in-ci}
+  - {controller: wiimote, console: switch, status: works-in-ci}
+  - {controller: wiiu_pro, console: switch, status: works-in-ci}
+  - {controller: switch_pro, console: switch, status: works-in-ci}
+  - {controller: joycon, console: switch, status: works-in-ci}
+  - {controller: 8bitdo, console: switch, status: works-in-ci}
+  - {controller: stadia, console: switch, status: works-in-ci}
+  - {controller: ds3, console: switch2, status: works-in-ci}
+  - {controller: ds4, console: switch2, status: works-in-ci}
+  - {controller: dualsense, console: switch2, status: works-in-ci}
+  - {controller: wiimote, console: switch2, status: works-in-ci}
+  - {controller: wiiu_pro, console: switch2, status: works-in-ci}
+  - {controller: switch_pro, console: switch2, status: works-in-ci}
+  - {controller: joycon, console: switch2, status: works-in-ci}
+  - {controller: 8bitdo, console: switch2, status: works-in-ci}
+  - {controller: stadia, console: switch2, status: works-in-ci}
 # Example:
 #  - controller: dualsense
 #    console: wii

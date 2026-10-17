@@ -17,6 +17,7 @@
 #include "yucca/console.h"
 #include "yucca/nvs_settings.h"
 #include "yucca/settings_schema.h"
+#include "yucca/switch_target.h"
 #include "yucca/wii_target.h"
 
 // BOOT button on most dev boards. Short press: sync. Hold 5 s: forget all.
@@ -36,9 +37,18 @@ static yucca::Target &wiiu()
     t.set_model(yucca::WiiTarget::Model::WiiU);
     return t;
 }
+static yucca::Target &nswitch() { return yucca::SwitchTarget::instance(); }
+static yucca::Target &switch2()
+{
+    auto &t = yucca::SwitchTarget::instance();
+    t.set_model(yucca::SwitchTarget::Model::Switch2);
+    return t;
+}
 static const TargetEntry kTargets[] = {
     {{"wii", "Wii"}, wii},
     {{"wiiu", "Wii U"}, wiiu},
+    {{"switch", "Switch"}, nswitch},
+    {{"switch2", "Switch 2"}, switch2},
 };
 static constexpr uint8_t kTargetCount = sizeof(kTargets) / sizeof(kTargets[0]);
 static yucca::SettingChoice s_choices[kTargetCount];

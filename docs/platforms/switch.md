@@ -376,6 +376,14 @@ Behaviour notes:
 
 ---
 
+## 12. In YUCCA
+
+- `components/switch_pro`: the protocol (replies, 0x30/0x31, SPI image, rumble). `components/bt_hid_device`: SDP, PSMs, pairing, the stored console, paging. `components/target_switch`: glue and reconnect policy. One target serves both consoles (`target=switch` / `switch2`), each with its own stored console.
+- Pairing runs with the console as master (it pages us). Once the console sets the player lights, or after 5 s, YUCCA hangs up and pages it 1 s later as master, so the ESP32 is master of both links (as on the Wii). That the console accepts this right after pairing is **UNVERIFIED**; `docs/hw-tests/switch.md` step 3 checks it.
+- Reports: 15 ms; before the player lights, at most one full report per 60 ms (section 5). Subcommand replies go out at once, oldest first.
+- `06 00` (console sleeping): ACK, hang up, no auto-reconnect; a button press pages the console again. Any other drop: page again for 60 s (15 s after reason 0x15).
+- Not in v1: motion (IMU reports idle samples), NFC/IR (0x31 carries zeros), Switch 2 wake beacon.
+
 ## Sources
 - [S1] dekuNukem et al., *bluetooth_hid_notes.md*: https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/bluetooth_hid_notes.md (no licence)
 - [S2] *bluetooth_hid_subcommands_notes.md*: https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/bluetooth_hid_subcommands_notes.md
