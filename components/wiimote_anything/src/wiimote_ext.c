@@ -8,6 +8,7 @@ static void refresh_plaintext(wiimote_ext_t *ext);
 static const uint8_t k_id_nunchuk[6] = {0x00, 0x00, 0xa4, 0x20, 0x00, 0x00};
 static const uint8_t k_id_classic[6] = {0x00, 0x00, 0xa4, 0x20, 0x01, 0x01};
 static const uint8_t k_id_classic_pro[6] = {0x01, 0x00, 0xa4, 0x20, 0x01, 0x01};
+static const uint8_t k_id_wiiu_pro[6] = {0x00, 0x00, 0xa4, 0x20, 0x01, 0x20};
 static const uint8_t k_id_mp_solo[6] = {0x00, 0x00, 0xa4, 0x20, 0x04, 0x05};
 static const uint8_t k_id_mp_nunchuk[6] = {0x00, 0x00, 0xa4, 0x20, 0x05, 0x05};
 static const uint8_t k_id_mp_inactive[6] = {0x00, 0x00, 0xa6, 0x20, 0x00, 0x05};
@@ -132,6 +133,11 @@ static bool classic_plugged(const wiimote_ext_t *ext)
     return ext->type == WIIMOTE_EXT_CLASSIC || ext->type == WIIMOTE_EXT_CLASSIC_PRO;
 }
 
+static bool pro_plugged(const wiimote_ext_t *ext)
+{
+    return ext->type == WIIMOTE_EXT_WIIU_PRO;
+}
+
 static void apply_visibility(wiimote_ext_t *ext)
 {
     if (ext->mp_active) {
@@ -152,6 +158,13 @@ static void apply_visibility(wiimote_ext_t *ext)
         memcpy(ext->a4 + 0xfa,
                ext->type == WIIMOTE_EXT_CLASSIC_PRO ? k_id_classic_pro : k_id_classic, 6);
         write_classic_cal(ext->a4);
+        return;
+    }
+    if (pro_plugged(ext)) {
+        /* No known calibration block (Linux and SDL ignore it, WPAD reports
+         * raw minus 0x800), so 0x20..0x3F stay zero. */
+        ext->a4_visible = true;
+        memcpy(ext->a4 + 0xfa, k_id_wiiu_pro, 6);
         return;
     }
     ext->a4_visible = false;
@@ -179,6 +192,11 @@ void wiimote_ext_init(wiimote_ext_t *ext, wiimote_extension_t type)
     ext->classic_ly = 32;
     ext->classic_rx = 16;
     ext->classic_ry = 16;
+    ext->pro_lx = 0x800;
+    ext->pro_ly = 0x800;
+    ext->pro_rx = 0x800;
+    ext->pro_ry = 0x800;
+    ext->pro_battery = 4;
     if (ext->mp_present) {
         memcpy(ext->a6 + 0xfa, k_id_mp_inactive, 6);
         ext->a6[0xf7] = 0x0e;
@@ -435,6 +453,37 @@ static void pack_classic(const wiimote_ext_t *ext, uint8_t out[6])
     if (classic_down(ext, WIIMOTE_BUTTON_CLASSIC_UP)) out[5] &= (uint8_t)~0x01;
 }
 
+uint8_t wiimote_ext_pro_battery_level(uint8_t battery)
+{
+    /* 0xC8 is a full remote (YUCCA maps 100 % there); 0xC0 also counts as full. */
+    if (battery >= 0xc0) {
+        return 4;
+    }
+    return (uint8_t)((battery * 4u) / 0xc0u);
+}
+
+/* Wii U Pro Controller extension payload, 11 bytes (docs/platforms/wiiu.md 3.2):
+ *   0..7: LX, RX, LY, RY as 12-bit little endian (that order)
+ *   8, 9: Classic Controller button bits, active low; byte 8 bit 0 reserved = 1
+ *   10:   bit 7 0, bits 6..4 battery 0..4, bits 3/2 wired/charging (0 = true,
+ *         so 1 = on battery), bit 1 L-stick click, bit 0 R-stick click (active low) */
+static void pack_pro(const wiimote_ext_t *ext, uint8_t out[11])
+{
+    const uint16_t axes[4] = {ext->pro_lx, ext->pro_rx, ext->pro_ly, ext->pro_ry};
+    uint8_t classic[6];
+    int i;
+    for (i = 0; i < 4; i++) {
+        out[i * 2] = (uint8_t)axes[i];
+        out[i * 2 + 1] = (uint8_t)((axes[i] >> 8) & 0x0f);
+    }
+    pack_classic(ext, classic);
+    out[8] = classic[4];
+    out[9] = classic[5];
+    out[10] = (uint8_t)(((ext->pro_battery > 4 ? 4 : ext->pro_battery) << 4) | 0x0c | 0x03);
+    if (classic_down(ext, WIIMOTE_BUTTON_PRO_LSTICK)) out[10] &= (uint8_t)~0x02;
+    if (classic_down(ext, WIIMOTE_BUTTON_PRO_RSTICK)) out[10] &= (uint8_t)~0x01;
+}
+
 static void encode_gyro(int dps, uint8_t *lo, uint8_t *hi, int *slow)
 {
     int units;
@@ -477,8 +526,13 @@ static void pack_motionplus(const wiimote_ext_t *ext, uint8_t out[6])
 
 static void refresh_plaintext(wiimote_ext_t *ext)
 {
-    uint8_t frame[6];
+    uint8_t frame[11];
     memset(frame, 0, sizeof(frame));
+    if (pro_plugged(ext)) {
+        pack_pro(ext, frame);
+        memcpy(ext->a4, frame, 11);
+        return;
+    }
     if (ext->mp_active) {
         bool nunchuk_frame = ext->mp_passthrough && (ext->mp_phase & 1);
         if (nunchuk_frame) {

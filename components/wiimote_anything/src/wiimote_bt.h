@@ -17,6 +17,8 @@ extern "C" {
  * or wiimote_bt_bluedroid.inc (Arduino fallback). */
 
 void wiimote_bt_set_external_stack(bool external);
+/** Before wiimote_bt_start(). wiiu_pro: present a Wii U Pro Controller. */
+esp_err_t wiimote_bt_set_identity(bool wiiu_pro, bool disable_ssp);
 esp_err_t wiimote_bt_start(void);
 /** Open the discoverable window. wiimote.c closes it with wiimote_bt_listen_only(). */
 esp_err_t wiimote_bt_sync(void);

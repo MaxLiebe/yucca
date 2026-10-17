@@ -285,7 +285,10 @@ esp_err_t wiimote_init(const wiimote_config_t *config)
     wiimote_proto_init(s_proto, config->extension, battery);
     wiimote_hw_init(config->pins);
     wiimote_bt_set_external_stack(config->external_stack);
-    err = wiimote_bt_start();
+    err = wiimote_bt_set_identity(config->extension == WIIMOTE_EXT_WIIU_PRO, config->disable_ssp);
+    if (err == ESP_OK) {
+        err = wiimote_bt_start();
+    }
     if (err != ESP_OK) {
         /* Nothing runs yet: release the state so wiimote_init() can retry. */
         ESP_LOGE(TAG, "Bluetooth start failed: %s", esp_err_to_name(err));
@@ -403,6 +406,10 @@ esp_err_t wiimote_set_extension(wiimote_extension_t extension)
     if (s_proto == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
+    /* The Pro Controller is a different device (name, product ID): no hot swap. */
+    if ((extension == WIIMOTE_EXT_WIIU_PRO) != (s_proto->ext.type == WIIMOTE_EXT_WIIU_PRO)) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
     wiimote_lock();
     wiimote_proto_set_extension(s_proto, extension);
     wiimote_unlock();
@@ -431,6 +438,14 @@ esp_err_t wiimote_set_axis(wiimote_axis_t axis, float value)
     int raw;
     if (s_proto == NULL || axis >= WIIMOTE_AXIS_COUNT) {
         return ESP_ERR_INVALID_ARG;
+    }
+    if (s_proto->ext.type == WIIMOTE_EXT_WIIU_PRO) {
+        /* Real sticks travel about +-1000 counts around 0x800. */
+        raw = stick_from_unit(value, 0x800 - 0x480, 0x800 + 0x480, 0x800);
+        wiimote_lock();
+        wiimote_proto_set_axis_raw(s_proto, axis, raw);
+        wiimote_unlock();
+        return ESP_OK;
     }
     switch (axis) {
     case WIIMOTE_AXIS_NUNCHUK_X:

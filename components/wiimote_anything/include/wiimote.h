@@ -92,6 +92,13 @@ typedef struct {
      * the console's connection request first. See wiimote_btstack.h.
      */
     bool external_stack;
+    /**
+     * BTstack only. Turn Secure Simple Pairing off before the radio powers on,
+     * so pairing falls back to the legacy PIN. A Wii U refuses to pair with a
+     * controller that offers SSP. This is for the whole radio: a host stack
+     * sharing it can then pair new gamepads only with a PIN (or none).
+     */
+    bool disable_ssp;
 } wiimote_config_t;
 
 /** Set every GPIO to -1, buttons active-low, ADC spans 0..4095 centered at 2048. */

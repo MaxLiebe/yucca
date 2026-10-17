@@ -15,7 +15,16 @@ typedef enum {
     WIIMOTE_EXT_CLASSIC,
     WIIMOTE_EXT_CLASSIC_PRO,
     WIIMOTE_EXT_MOTION_PLUS,
-    WIIMOTE_EXT_MOTION_PLUS_NUNCHUK
+    WIIMOTE_EXT_MOTION_PLUS_NUNCHUK,
+    /**
+     * Not an extension but a different controller: the Wii U Pro Controller
+     * (RVL-CNT-01-UC), a Wii Remote with a built-in extension and no IR,
+     * accelerometer or MotionPlus. It changes the Bluetooth name and product
+     * ID, so it can only be chosen in wiimote_init(), not switched to later.
+     * Buttons: the CLASSIC_* ones plus PRO_LSTICK / PRO_RSTICK. Sticks: the
+     * CLASSIC_* axes at 12 bits. ZL/ZR are buttons; LT/RT axes are ignored.
+     */
+    WIIMOTE_EXT_WIIU_PRO
 } wiimote_extension_t;
 
 /**
@@ -51,6 +60,8 @@ typedef enum {
     WIIMOTE_BUTTON_CLASSIC_DOWN,
     WIIMOTE_BUTTON_CLASSIC_LEFT,
     WIIMOTE_BUTTON_CLASSIC_RIGHT,
+    WIIMOTE_BUTTON_PRO_LSTICK, /**< Wii U Pro Controller stick clicks. */
+    WIIMOTE_BUTTON_PRO_RSTICK,
     WIIMOTE_BUTTON_COUNT
 } wiimote_button_t;
 

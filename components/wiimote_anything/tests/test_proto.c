@@ -343,6 +343,74 @@ static void test_eeprom_status_rumble_ir_mode(void)
     CHECK((pkt[4] & 0x01) == 0);
 }
 
+/* Decode like Linux hid-wiimote (wiimod_pro_in_ext) and SDL: LX, RX, LY, RY. */
+static void decode_pro(const uint8_t *ext, int *lx, int *rx, int *ly, int *ry)
+{
+    *lx = ext[0] | ((ext[1] & 0x0f) << 8);
+    *rx = ext[2] | ((ext[3] & 0x0f) << 8);
+    *ly = ext[4] | ((ext[5] & 0x0f) << 8);
+    *ry = ext[6] | ((ext[7] & 0x0f) << 8);
+}
+
+static void test_wiiu_pro(void)
+{
+    wiimote_proto_t p;
+    uint8_t pkt[32];
+    int lx, rx, ly, ry;
+    const uint8_t init1[] = {0x16, 0x04, 0xa4, 0x00, 0xf0, 0x01, 0x55};
+    const uint8_t init2[] = {0x16, 0x04, 0xa4, 0x00, 0xfb, 0x01, 0x00};
+    const uint8_t read_id[] = {0x17, 0x04, 0xa4, 0x00, 0xfa, 0x00, 0x06};
+    const uint8_t read_mp[] = {0x17, 0x04, 0xa6, 0x00, 0xfa, 0x00, 0x06};
+    const uint8_t status[] = {0x15, 0x00};
+
+    wiimote_proto_init(&p, WIIMOTE_EXT_WIIU_PRO, 0xc8);
+    CHECK(wiimote_proto_build(&p, 0x34, pkt, sizeof(pkt)) == 23);
+    decode_pro(pkt + 4, &lx, &rx, &ly, &ry);
+    CHECK(lx == 0x800 && rx == 0x800 && ly == 0x800 && ry == 0x800);
+    CHECK(pkt[4 + 8] == 0xff && pkt[4 + 9] == 0xff);
+    CHECK(pkt[4 + 10] == 0x4f); /* battery 4, on battery, sticks released */
+
+    wiimote_proto_set_axis_raw(&p, WIIMOTE_AXIS_CLASSIC_LX, 0x123);
+    wiimote_proto_set_axis_raw(&p, WIIMOTE_AXIS_CLASSIC_RX, 0xfff);
+    wiimote_proto_set_axis_raw(&p, WIIMOTE_AXIS_CLASSIC_LY, 5000); /* clamped */
+    wiimote_proto_set_axis_raw(&p, WIIMOTE_AXIS_CLASSIC_RY, -3);
+    wiimote_proto_set_axis_raw(&p, WIIMOTE_AXIS_CLASSIC_LT, 31); /* digital on the Pro: ignored */
+    wiimote_proto_set_button(&p, WIIMOTE_BUTTON_CLASSIC_A, true);
+    wiimote_proto_set_button(&p, WIIMOTE_BUTTON_CLASSIC_HOME, true);
+    wiimote_proto_set_button(&p, WIIMOTE_BUTTON_PRO_LSTICK, true);
+    wiimote_proto_set_battery(&p, 0x60);
+    wiimote_proto_build(&p, 0x3d, pkt, sizeof(pkt));
+    decode_pro(pkt + 2, &lx, &rx, &ly, &ry);
+    CHECK(lx == 0x123 && rx == 0xfff && ly == 0xfff && ry == 0);
+    CHECK(pkt[2 + 9] == (uint8_t)~0x10);         /* A */
+    CHECK(pkt[2 + 8] == (uint8_t)~0x08);         /* Home; reserved bit 0 stays 1 */
+    CHECK(pkt[2 + 10] == (uint8_t)(0x20 | 0x0c | 0x01)); /* battery 2, L click */
+
+    /* Identity: extension id 00 00 A4 20 01 20, no MotionPlus behind it. */
+    feed(&p, init1, sizeof(init1));
+    feed(&p, init2, sizeof(init2));
+    feed(&p, read_id, sizeof(read_id));
+    while (take(&p, pkt, 0) > 0 && pkt[1] != 0x21) {
+    }
+    CHECK((pkt[4] & 0x0f) == 0);
+    CHECK(pkt[7] == 0x00 && pkt[8] == 0x00 && pkt[9] == 0xa4 && pkt[10] == 0x20);
+    CHECK(pkt[11] == 0x01 && pkt[12] == 0x20);
+    feed(&p, read_mp, sizeof(read_mp));
+    while (take(&p, pkt, 0) > 0 && pkt[1] != 0x21) {
+    }
+    CHECK((pkt[4] & 0x0f) == 7);
+    feed(&p, status, sizeof(status));
+    while (take(&p, pkt, 0) > 0 && pkt[1] != 0x20) {
+    }
+    CHECK(pkt[1] == 0x20 && (pkt[4] & 0x02) != 0); /* extension always present */
+
+    /* Battery levels. */
+    CHECK(wiimote_ext_pro_battery_level(0xc8) == 4);
+    CHECK(wiimote_ext_pro_battery_level(0xc0) == 4);
+    CHECK(wiimote_ext_pro_battery_level(0x30) == 1);
+    CHECK(wiimote_ext_pro_battery_level(0x00) == 0);
+}
+
 int main(void)
 {
     test_buttons_and_accel();
@@ -354,6 +422,7 @@ int main(void)
     test_crypto_dolphin_vector(0);
     test_crypto_dolphin_vector(1);
     test_eeprom_status_rumble_ir_mode();
+    test_wiiu_pro();
     if (g_fails) {
         printf("%d checks failed\n", g_fails);
         return 1;

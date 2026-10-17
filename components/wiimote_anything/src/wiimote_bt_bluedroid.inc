@@ -1698,6 +1698,16 @@ uint8_t wiimote_bt_last_disconnect_reason(void)
     return 0;
 }
 
+esp_err_t wiimote_bt_set_identity(bool wiiu_pro, bool disable_ssp)
+{
+    /* The Arduino fallback only presents a Wii Remote, with Bluedroid's SSP setting. */
+    if (wiiu_pro || disable_ssp) {
+        ESP_LOGE(TAG, "Wii U Pro mode and disable_ssp need the BTstack backend");
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+    return ESP_OK;
+}
+
 void wiimote_bt_set_external_stack(bool external)
 {
     (void)external;

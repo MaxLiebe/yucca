@@ -40,6 +40,11 @@ typedef struct {
     uint8_t classic_lt;
     uint8_t classic_rt;
     uint32_t classic_pressed;
+    uint16_t pro_lx; /* Wii U Pro sticks, 12-bit, center 0x800 */
+    uint16_t pro_ly;
+    uint16_t pro_rx;
+    uint16_t pro_ry;
+    uint8_t pro_battery; /* 0 (empty) .. 4 (full) */
     int16_t pitch_dps;
     int16_t roll_dps;
     int16_t yaw_dps;
@@ -52,6 +57,8 @@ typedef struct {
 } wiimote_ext_result_t;
 
 void wiimote_ext_init(wiimote_ext_t *ext, wiimote_extension_t type);
+/** Wii U Pro battery level (0..4) from a Wii Remote battery byte (0xC8 full). */
+uint8_t wiimote_ext_pro_battery_level(uint8_t battery);
 bool wiimote_ext_connected_bit(const wiimote_ext_t *ext);
 
 /** 0 on success. error is 0, 7, or 8. result collects plug/unplug status edges. */

@@ -10,7 +10,7 @@ static bool core_down(const wiimote_proto_t *proto, wiimote_button_t button)
 
 static bool classic_button(wiimote_button_t button)
 {
-    return button >= WIIMOTE_BUTTON_CLASSIC_A && button <= WIIMOTE_BUTTON_CLASSIC_RIGHT;
+    return button >= WIIMOTE_BUTTON_CLASSIC_A && button <= WIIMOTE_BUTTON_PRO_RSTICK;
 }
 
 static void queue_packet(wiimote_proto_t *proto, const uint8_t *data, uint8_t len)
@@ -483,6 +483,7 @@ void wiimote_proto_init(wiimote_proto_t *proto, wiimote_extension_t extension, u
     seed_eeprom(proto->eeprom);
     wiimote_ext_init(&proto->ext, extension);
     proto->battery = battery;
+    proto->ext.pro_battery = wiimote_ext_pro_battery_level(battery);
     proto->accel_x = 0x200;
     proto->accel_y = 0x200;
     proto->accel_z = 0x26a;
@@ -525,10 +526,34 @@ static uint8_t clamp_u8(int value, int lo, int hi)
     return (uint8_t)value;
 }
 
+static bool set_pro_axis(wiimote_proto_t *proto, wiimote_axis_t axis, int value)
+{
+    uint16_t *slot;
+    uint16_t clamped = (uint16_t)(value < 0 ? 0 : (value > 0xfff ? 0xfff : value));
+    switch (axis) {
+    case WIIMOTE_AXIS_CLASSIC_LX: slot = &proto->ext.pro_lx; break;
+    case WIIMOTE_AXIS_CLASSIC_LY: slot = &proto->ext.pro_ly; break;
+    case WIIMOTE_AXIS_CLASSIC_RX: slot = &proto->ext.pro_rx; break;
+    case WIIMOTE_AXIS_CLASSIC_RY: slot = &proto->ext.pro_ry; break;
+    default: return false; /* triggers are digital on the Pro */
+    }
+    if (*slot == clamped) {
+        return false;
+    }
+    *slot = clamped;
+    return true;
+}
+
 void wiimote_proto_set_axis_raw(wiimote_proto_t *proto, wiimote_axis_t axis, int value)
 {
     uint8_t clamped;
     bool changed = false;
+    if (proto->ext.type == WIIMOTE_EXT_WIIU_PRO && axis != WIIMOTE_AXIS_NUNCHUK_X && axis != WIIMOTE_AXIS_NUNCHUK_Y) {
+        if (set_pro_axis(proto, axis, value)) {
+            proto->have_last_payload = false;
+        }
+        return;
+    }
     switch (axis) {
     case WIIMOTE_AXIS_NUNCHUK_X:
         clamped = clamp_u8(value, 0, 255);
@@ -643,7 +668,12 @@ void wiimote_proto_set_ir_raw(wiimote_proto_t *proto, const uint8_t *data, size_
 
 void wiimote_proto_set_battery(wiimote_proto_t *proto, uint8_t level)
 {
+    uint8_t pro = wiimote_ext_pro_battery_level(level);
     proto->battery = level;
+    if (proto->ext.pro_battery != pro) {
+        proto->ext.pro_battery = pro;
+        proto->have_last_payload = false;
+    }
 }
 
 void wiimote_proto_set_extension(wiimote_proto_t *proto, wiimote_extension_t extension)
@@ -658,7 +688,9 @@ void wiimote_proto_set_extension(wiimote_proto_t *proto, wiimote_extension_t ext
     uint8_t rx = proto->ext.classic_rx, ry = proto->ext.classic_ry;
     uint8_t lt = proto->ext.classic_lt, rt = proto->ext.classic_rt;
     int16_t pitch = proto->ext.pitch_dps, roll = proto->ext.roll_dps, yaw = proto->ext.yaw_dps;
+    uint8_t pro_battery = proto->ext.pro_battery;
     wiimote_ext_init(&proto->ext, extension);
+    proto->ext.pro_battery = pro_battery;
     proto->ext.nunchuk_x = nx;
     proto->ext.nunchuk_y = ny;
     proto->ext.nunchuk_ax = ax;

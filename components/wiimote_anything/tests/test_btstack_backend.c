@@ -100,8 +100,12 @@ void hci_set_master_slave_policy(uint8_t p) { g_policy = p; }
 
 /* GAP */
 static int g_discoverable = -1, g_connectable = -1;
-void gap_set_local_name(const char *n) { (void)n; }
-void gap_set_class_of_device(uint32_t c) { (void)c; }
+static const char *g_name;
+static uint32_t g_cod;
+static int g_ssp = -1;
+void gap_set_local_name(const char *n) { g_name = n; }
+void gap_set_class_of_device(uint32_t c) { g_cod = c; }
+void gap_ssp_set_enable(int e) { g_ssp = e; }
 static bool g_allow_role_switch = true;
 void gap_set_allow_role_switch(bool a) { g_allow_role_switch = a; }
 void gap_set_default_link_policy_settings(uint16_t s) { (void)s; }
@@ -187,6 +191,7 @@ uint8_t l2cap_send(uint16_t cid, const uint8_t *data, uint16_t len)
 }
 
 /* SDP */
+static uint16_t g_pnp_pid;
 static uint8_t *g_records[4];
 static int g_record_count;
 static uint32_t g_next_handle = 0x10001;
@@ -197,7 +202,8 @@ uint8_t *sdp_get_record_for_handle(uint32_t h) { (void)h; return NULL; }
 void device_id_create_sdp_record(uint8_t *service, uint32_t handle, uint16_t src, uint16_t vid, uint16_t pid,
                                  uint16_t ver)
 {
-    (void)handle; (void)src; (void)vid; (void)pid; (void)ver;
+    (void)handle; (void)src; (void)vid; (void)ver;
+    g_pnp_pid = pid;
     de_create_sequence(service);
 }
 
@@ -746,6 +752,35 @@ static void test_forget(void)
     CHECK(!g_connected);
 }
 
+static void test_identity(void)
+{
+    /* Booted as a Wii Remote with SSP left alone. */
+    CHECK(g_pnp_pid == 0x0306);
+    CHECK(g_ssp == -1);
+    CHECK(g_cod == 0x002504);
+
+    CHECK(wiimote_bt_set_identity(true, true) == ESP_OK);
+    HCI_STATE saved = g_hci_state;
+    g_hci_state = HCI_STATE_OFF;
+    apply_ssp_setting();
+    CHECK(g_ssp == 0);
+    apply_identity();
+    CHECK(strcmp(g_name, "Nintendo RVL-CNT-01-UC") == 0);
+    CHECK(g_cod == 0x002508);
+    CHECK(s_pnp_product == 0x0330);
+
+    /* Too late once the radio is on: SSP is left as it is. */
+    g_ssp = -1;
+    g_hci_state = HCI_STATE_WORKING;
+    apply_ssp_setting();
+    CHECK(g_ssp == -1);
+
+    g_hci_state = saved;
+    CHECK(wiimote_bt_set_identity(false, false) == ESP_OK);
+    apply_identity();
+    CHECK(strcmp(g_name, "Nintendo RVL-CNT-01") == 0);
+}
+
 int main(int argc, char **argv)
 {
     g_verbose = argc > 1 && strcmp(argv[1], "-v") == 0;
@@ -756,6 +791,7 @@ int main(int argc, char **argv)
     test_wii_disconnect_and_reconnect();
     test_connect_watchdog();
     test_forget();
+    test_identity();
     if (s_failures) {
         printf("%d backend check(s) failed\n", s_failures);
         return 1;
