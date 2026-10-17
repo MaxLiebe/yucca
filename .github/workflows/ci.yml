@@ -30,6 +30,8 @@ jobs:
         run: make -C components/target_wii/test/host
       - name: yucca_app
         run: make -C components/yucca_app/test/host
+      - name: bt_hid_device
+        run: make -C components/bt_hid_device/test/host
       - name: switch_pro
         run: make -C components/switch_pro/test/host
       - name: WiimoteAnything
