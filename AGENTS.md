@@ -21,6 +21,7 @@ v1 controllers: DS3, DS4, DualSense, Wiimote + extensions, Wii U Pro, Switch Pro
 | `components/yucca_core/` | `GamepadState`, `Feedback`, `InputDriver`, `Target`, `Mapper`, `Settings` (memory + NVS), settings schema (every user setting, one table). No ESP-IDF headers except `nvs_settings`. |
 | `components/input_bluepad32/` | Controller side: Bluepad32 -> `GamepadState`, feedback to the controller. `src/convert.*` is host-tested. |
 | `components/target_wii/` | Wii: Wii Remote + Classic Controller via WiimoteAnything, reconnect policy. Host-tested against a fake WiimoteAnything. |
+| `components/switch_pro/` | Switch Pro Controller protocol (subcommand replies, 0x30 reports, rumble), no Bluetooth. Host-tested. |
 | `components/target_*/` | Other consoles, one per emulated device. |
 | `web/` | Installer + settings website (GitHub Pages, ESP Web Tools, Web Serial). Built by `.github/workflows/pages.yml`. |
 | `support.yaml` | Source of truth for what works. README table is generated from it. |
