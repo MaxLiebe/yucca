@@ -62,7 +62,7 @@ uint16_t s_cid_control;
 uint16_t s_cid_interrupt;
 // An outgoing channel abandoned before it opened: its late CHANNEL_OPENED is
 // swallowed instead of reaching the host stack.
-uint16_t s_stale_cid;
+uint16_t s_stale_cid[2];
 bool s_control_open;
 bool s_interrupt_open;
 bool s_link_up;
@@ -140,6 +140,11 @@ void store_host(const bd_addr_t addr)
 {
     if (s_have_host && addr_eq(addr, s_host_addr)) {
         return;
+    }
+    if (s_have_host) {
+        // One console at a time: the old one becomes an unknown host again,
+        // so it can pair again instead of being taken for a bonded gamepad.
+        gap_drop_link_key_for_bd_addr(s_host_addr);
     }
     std::memcpy(s_host_addr, addr, BD_ADDR_LEN);
     s_have_host = true;
@@ -319,8 +324,9 @@ void restore_page_settings()
 void release_link()
 {
     const bool was_up = s_link_up;
-    if (s_link_outgoing && s_cid_control != 0 && !s_control_open) {
-        s_stale_cid = s_cid_control;
+    if (s_link_outgoing) {
+        s_stale_cid[0] = s_control_open ? 0 : s_cid_control;
+        s_stale_cid[1] = s_interrupt_open ? 0 : s_cid_interrupt;
     }
     s_link_claimed = false;
     s_link_outgoing = false;
@@ -552,6 +558,9 @@ void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint1
         }
         if (!s_link_claimed) {
             claim_link(addr, false);
+        } else if (!addr_eq(addr, s_link_addr)) {
+            l2cap_decline_connection(cid);  // a second console
+            return;
         }
         s_link_handle = handle;
         if (psm == kPsmControl && s_cid_control == 0) {
@@ -567,8 +576,13 @@ void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint1
     }
     case L2CAP_EVENT_CHANNEL_OPENED: {
         const uint16_t cid = l2cap_event_channel_opened_get_local_cid(packet);
-        if (cid != 0 && cid == s_stale_cid) {
-            s_stale_cid = 0;
+        if (cid != 0 && (cid == s_stale_cid[0] || cid == s_stale_cid[1])) {
+            (cid == s_stale_cid[0] ? s_stale_cid[0] : s_stale_cid[1]) = 0;
+            if (l2cap_event_channel_opened_get_status(packet) == ERROR_CODE_SUCCESS) {
+                // A page we gave up on succeeded after all: nobody owns it.
+                l2cap_disconnect(cid);
+                gap_disconnect(l2cap_event_channel_opened_get_handle(packet));
+            }
             return;
         }
         if (!is_our_cid(cid)) {

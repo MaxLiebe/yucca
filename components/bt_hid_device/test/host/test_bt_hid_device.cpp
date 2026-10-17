@@ -307,6 +307,7 @@ static void test_console_pairs()
     CHECK(connected() && g_listener.links_up == 1);
     CHECK(!syncing() && g_discoverable == 0 && g_listener.sync_off == 1);
     CHECK(has_host() && g_tlv_have && g_tlv_tag == kProfile.host_tag);
+    CHECK(g_keys_dropped == 0);
     CHECK(g_report_armed);
     CHECK(!link_is_master());
 
@@ -391,6 +392,20 @@ static void test_watchdog_while_paging()
     const int fwd = g_forwarded;
     l2cap_opened(SWITCH, 0x0000, 0x11, ctrl, 0x04);
     CHECK(g_forwarded == fwd);
+}
+
+static void test_late_page_success()
+{
+    // The drop watchdog lets go, then the page succeeds anyway: hung up.
+    connect();
+    const uint16_t ctrl = s_cid_control;
+    disconnect();
+    s_connect_watchdog.process(&s_connect_watchdog);
+    CHECK(!s_link_claimed);
+    const int fwd = g_forwarded, disc = g_disconnects;
+    l2cap_opened(SWITCH, 0x0084, 0x11, ctrl);
+    CHECK(g_forwarded == fwd && g_disconnects == disc + 1);
+    ev_disconnect(0x0084, 0x16);
 }
 
 static void test_disconnect_while_paging()
@@ -481,6 +496,8 @@ static void test_unknown_hosts()
     CHECK(s_link_claimed && g_watchdog_armed);
     // A second unknown host meanwhile is hung up once its link is up.
     CHECK(ev_conn_request(OTHER, 0x000000) == HCI_EVENT_NOP);
+    l2cap_incoming(OTHER, 0x0091, 0x11, 0x55);  // not ours: our slots stay free
+    CHECK(s_cid_control == 0);
     const int disc = g_disconnects;
     ev_conn_complete(OTHER, 0x0091, 0);
     CHECK(g_disconnects == disc + 1 && is_link_addr(PC));
@@ -488,6 +505,43 @@ static void test_unknown_hosts()
     CHECK(!s_link_claimed);
     s_sync_timer.process(&s_sync_timer);
     CHECK(!syncing());
+}
+
+static void pair_incoming(const bd_addr_t a, uint16_t handle)
+{
+    sync();
+    g_have_key = false;
+    CHECK(ev_conn_request(a, 0x000000) == HCI_EVENT_NOP);
+    ev_conn_complete(a, handle, 0);
+    l2cap_incoming(a, handle, 0x11, 0x61);
+    l2cap_incoming(a, handle, 0x13, 0x62);
+    l2cap_opened(a, handle, 0x11, 0x61);
+    l2cap_opened(a, handle, 0x13, 0x62);
+    CHECK(connected());
+    ev_disconnect(handle, 0x13);
+}
+
+static void test_new_console_replaces_old()
+{
+    static const bd_addr_t SWITCH2 = {0x98, 0xb6, 0xe9, 0x09, 0x09, 0x09};
+    pair_incoming(SWITCH, 0x0085);
+    const int keys = g_keys_dropped;
+    pair_incoming(SWITCH, 0x0086);  // same console again: key kept
+    CHECK(g_keys_dropped == keys);
+    pair_incoming(SWITCH2, 0x0087);  // another console: the old key goes
+    CHECK(g_keys_dropped == keys + 1 && is_console(SWITCH2, 0, false) && !is_console(SWITCH, 0, false));
+
+    // While an unknown host holds the claim, the paired console's channels
+    // are refused instead of taking its slots.
+    static const bd_addr_t PC = {0x20, 0x20, 0x30, 0x40, 0x50, 0x60};
+    sync();
+    CHECK(ev_conn_request(PC, 0x000100) == HCI_EVENT_NOP);
+    ev_conn_complete(PC, 0x0088, 0);
+    const int declines = g_declines;
+    l2cap_incoming(SWITCH2, 0x0089, 0x11, 0x56);
+    CHECK(g_declines == declines + 1 && s_cid_control == 0 && s_link_handle == 0x0088);
+    ev_disconnect(0x0088, 0x13);
+    s_sync_timer.process(&s_sync_timer);
 }
 
 int main(int argc, char **)
@@ -498,10 +552,12 @@ int main(int argc, char **)
     RUN(test_console_pairs);
     RUN(test_reconnect_as_master);
     RUN(test_watchdog_while_paging);
+    RUN(test_late_page_success);
     RUN(test_disconnect_while_paging);
     RUN(test_qos_one_at_a_time);
     RUN(test_held_channels);
     RUN(test_unplug_forgets);
     RUN(test_unknown_hosts);
+    RUN(test_new_console_replaces_old);
     DONE("bt_hid_device");
 }
