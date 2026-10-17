@@ -1,54 +1,32 @@
-// YUCCA entry point. Placeholder until the Phase 0 port lands (see AGENTS.md):
-// brings up BTstack and Bluepad32 and logs gamepads.
+// YUCCA entry point: settings, Bluetooth, one input, one target.
 
 #include <btstack_port_esp32.h>
 #include <btstack_run_loop.h>
 #include <btstack_stdio_esp32.h>
-#include <uni.h>
 
+#include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "sdkconfig.h"
+#include "yucca/app.h"
+#include "yucca/bluepad32_input.h"
+#include "yucca/nvs_settings.h"
+#include "yucca/wii_target.h"
 
-static const char *TAG = "yucca";
+// BOOT button on most dev boards. Short press: sync. Hold 5 s: forget all.
+static constexpr gpio_num_t kBootGpio = GPIO_NUM_0;
+static constexpr uint32_t kTickMs = 20;
 
-static void platform_init(int, const char **) {}
-static void platform_on_init_complete(void)
-{
-    uni_bt_start_scanning_and_autoconnect_unsafe();
-}
-static uni_error_t platform_on_device_discovered(bd_addr_t, const char *, uint16_t, uint8_t)
-{
-    return UNI_ERROR_SUCCESS;
-}
-static void platform_on_device_connected(uni_hid_device_t *) {}
-static void platform_on_device_disconnected(uni_hid_device_t *) {}
-static uni_error_t platform_on_device_ready(uni_hid_device_t *)
-{
-    ESP_LOGI(TAG, "Gamepad ready");
-    return UNI_ERROR_SUCCESS;
-}
-static void platform_on_oob_event(uni_platform_oob_event_t, void *) {}
-static void platform_on_controller_data(uni_hid_device_t *, uni_controller_t *) {}
-static const uni_property_t *platform_get_property(uni_property_idx_t)
-{
-    return nullptr;
-}
+static yucca::App *s_app;
+static btstack_timer_source_t s_tick;
 
-static struct uni_platform s_platform = {
-    .name = "YUCCA",
-    .init = platform_init,
-    .on_init_complete = platform_on_init_complete,
-    .on_device_discovered = platform_on_device_discovered,
-    .on_device_connected = platform_on_device_connected,
-    .on_device_disconnected = platform_on_device_disconnected,
-    .on_device_ready = platform_on_device_ready,
-    .on_gamepad_data = nullptr,
-    .on_controller_data = platform_on_controller_data,
-    .get_property = platform_get_property,
-    .on_oob_event = platform_on_oob_event,
-    .device_dump = nullptr,
-    .register_console_cmds = nullptr,
-};
+static void tick(btstack_timer_source_t *ts)
+{
+    const int64_t now_ms = esp_timer_get_time() / 1000;
+    s_app->tick(now_ms, gpio_get_level(kBootGpio) == 0);
+    btstack_run_loop_set_timer(ts, kTickMs);
+    btstack_run_loop_add_timer(ts);
+}
 
 extern "C" void app_main(void)
 {
@@ -57,9 +35,31 @@ extern "C" void app_main(void)
     btstack_stdio_init();
 #endif
 #endif
-    ESP_LOGI(TAG, "YUCCA starting");
+    gpio_config_t io = {};
+    io.pin_bit_mask = 1ULL << kBootGpio;
+    io.mode = GPIO_MODE_INPUT;
+    io.pull_up_en = GPIO_PULLUP_ENABLE;
+    gpio_config(&io);
+
+    // BTstack with the ESP32 VHCI controller (also sets up NVS + TLV).
     btstack_init();
-    uni_platform_set_custom(&s_platform);
-    uni_init(0, nullptr);
+
+    static yucca::NvsSettings settings;
+    auto &input = yucca::Bluepad32Input::instance();
+    input.set_ble_enabled(settings.get_int(yucca::keys::kBle, 1) != 0);
+
+    // The target sees every Bluetooth event first and hands the rest to Bluepad32.
+    yucca::Target &target = yucca::WiiTarget::instance();
+    target.set_fallback_handler(yucca::Bluepad32Input::packet_handler());
+
+    static yucca::App app(settings, input, target);
+    s_app = &app;
+    app.begin();
+
+    btstack_run_loop_set_timer_handler(&s_tick, tick);
+    btstack_run_loop_set_timer(&s_tick, kTickMs);
+    btstack_run_loop_add_timer(&s_tick);
+
+    // Does not return.
     btstack_run_loop_execute();
 }

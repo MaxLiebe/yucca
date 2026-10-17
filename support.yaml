@@ -25,7 +25,16 @@ controllers:
   - {id: 8bitdo, name: 8BitDo controllers}
   - {id: stadia, name: Stadia controller}
 
-cells: []
+cells:
+  - {controller: ds3, console: wii, status: works-in-ci}
+  - {controller: ds4, console: wii, status: works-in-ci}
+  - {controller: dualsense, console: wii, status: works-in-ci}
+  - {controller: wiimote, console: wii, status: works-in-ci}
+  - {controller: wiiu_pro, console: wii, status: works-in-ci}
+  - {controller: switch_pro, console: wii, status: works-in-ci}
+  - {controller: joycon, console: wii, status: works-in-ci}
+  - {controller: 8bitdo, console: wii, status: works-in-ci}
+  - {controller: stadia, console: wii, status: works-in-ci}
 # Example:
 #  - controller: dualsense
 #    console: wii

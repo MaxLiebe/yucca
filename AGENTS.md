@@ -13,18 +13,21 @@ v1 controllers: DS3, DS4, DualSense, Wiimote + extensions, Wii U Pro, Switch Pro
 
 | Path | What |
 | --- | --- |
-| `main/` | Boot: load settings, pick input + target, run the loop. |
+| `main/` | Boot: settings, BTstack, pick input + target, 20 ms tick. Thin; logic lives in components. |
+| `components/yucca_app/` | `App`: wires input to target, scanning policy, sync/forget gestures. Host-tested with fakes. |
 | `components/wiimote_anything/` | Wii Remote emulation library, `git subtree` of MaxLiebe/wiimote-anything. Push fixes back with `git subtree push`. |
 | `external/bluepad32/` | Bluepad32 submodule (gamepads, and the BTstack we build on). Its BTstack patches are applied at configure time. |
 | `components/yucca_core/` | `GamepadState`, `Feedback`, `InputDriver`, `Target`, `Mapper`, `Settings` (memory + NVS). No ESP-IDF headers except `nvs_settings`. |
-| `components/input_*/` | Controller side. v1: `input_bluepad32` (planned). |
-| `components/target_*/` | Console side, one per emulated device (planned). |
+| `components/input_bluepad32/` | Controller side: Bluepad32 -> `GamepadState`, feedback to the controller. `src/convert.*` is host-tested. |
+| `components/target_wii/` | Wii: Wii Remote + Classic Controller via WiimoteAnything, reconnect policy. Host-tested against a fake WiimoteAnything. |
+| `components/target_*/` | Other consoles, one per emulated device. |
 | `support.yaml` | Source of truth for what works. README table is generated from it. |
 | `tools/support_matrix.py` | Validates `support.yaml`, renders the README table. |
 | `docs/architecture.md` | Interfaces and data flow. |
 | `docs/workflow.md` | How work moves from issue to merge. |
 | `docs/platforms/<x>.md` | Protocol notes per console/controller. Read the one you need, nothing else. |
 | `docs/hw-tests/<x>.md` | Manual test script per target, run by a human on real hardware. |
+| `docs/controllers.md` | How to pair each controller (user-facing). |
 
 ## Commands
 
