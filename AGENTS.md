@@ -18,7 +18,8 @@ v1 controllers: DS3, DS4, DualSense, Wiimote + extensions, Wii U Pro, Switch Pro
 | `external/bluepad32/` | Bluepad32 submodule (gamepads, and the BTstack we build on). Its BTstack patches are applied at configure time. |
 | `components/yucca_core/` | `GamepadState`, `Feedback`, `InputDriver`, `Target`, `Mapper`, `Settings` (memory + NVS). No ESP-IDF headers except `nvs_settings`. |
 | `components/input_bluepad32/` | Controller side: Bluepad32 -> `GamepadState`, feedback to the controller. `src/convert.*` is host-tested. |
-| `components/target_*/` | Console side, one per emulated device (planned). |
+| `components/target_wii/` | Wii: Wii Remote + Classic Controller via WiimoteAnything, reconnect policy. Host-tested against a fake WiimoteAnything. |
+| `components/target_*/` | Other consoles, one per emulated device. |
 | `support.yaml` | Source of truth for what works. README table is generated from it. |
 | `tools/support_matrix.py` | Validates `support.yaml`, renders the README table. |
 | `docs/architecture.md` | Interfaces and data flow. |
