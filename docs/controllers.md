@@ -10,7 +10,7 @@ YUCCA uses one controller at a time. Pair the controller first, then the console
 | Joy-Con | Hold the **sync** button on the rail (one Joy-Con at a time for now) |
 | Wii Remote / Wii U Pro | Press the red **SYNC** button (battery cover / back) |
 | Stadia | Must run the Bluetooth firmware; hold **Stadia + Y** until the light flashes |
-| Xbox Wireless (BLE firmware) | Hold the **pair** button on top until the logo flashes fast |
+| Xbox Wireless (BLE firmware, untested) | Hold the **pair** button on top until the logo flashes fast. Supported by Bluepad32 but not yet tracked in the support table |
 | 8BitDo (SN30 Pro, Pro 2, ...) | Switch it on in a mode (below), then hold **Pair** for 3 s |
 
 8BitDo pads pair separately in each mode, so pick one and stay with it:

@@ -30,6 +30,12 @@ endforeach()
 
 set(ENV{BTSTACK_ROOT} "${BTSTACK_DIR}")
 
+# Firmware version from the tag. Not `--dirty`: the BTstack patches above
+# always leave the submodule modified.
+execute_process(COMMAND git describe --tags --always
+    WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}" OUTPUT_VARIABLE PROJECT_VER
+    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+
 # Bluepad32 and its BTstack port live under bluepad32/src/components.
 set(EXTRA_COMPONENT_DIRS "${BLUEPAD32_ROOT}/src/components")
 

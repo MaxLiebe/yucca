@@ -19,7 +19,9 @@ CONFIG_BTDM_CTRL_AUTO_LATENCY=y
 CONFIG_BTDM_CTRL_MODEM_SLEEP=n
 
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
-CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+# Crash dumps go to the serial log (the default partition table has no
+# coredump partition); paste them into bug reports.
+CONFIG_ESP_COREDUMP_ENABLE_TO_UART=y
 
 # 1 ms ticks: the 5 ms report timer and the 20 ms housekeeping tick need them.
 CONFIG_FREERTOS_HZ=1000
