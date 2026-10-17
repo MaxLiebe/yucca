@@ -39,16 +39,16 @@ Generated from [`support.yaml`](support.yaml). The Wii column already works in [
 <!-- support-matrix:start -->
 | Controller | Wii | Wii U | Switch | Switch 2 | PS4 | PS5 |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| PlayStation 3 controller | 🧪 | 🧪 | ⬜ | ⬜ | — | — |
-| DualShock 4 | 🧪 | 🧪 | ⬜ | ⬜ | — | — |
-| DualSense | 🧪 | 🧪 | ⬜ | ⬜ | — | — |
-| Wii Remote + extensions | 🧪 | 🧪 | ⬜ | ⬜ | — | — |
-| Wii U Pro Controller | 🧪 | 🧪 | ⬜ | ⬜ | — | — |
-| Switch Pro Controller | 🧪 | 🧪 | ⬜ | ⬜ | — | — |
-| Switch Joy-Con | 🧪 | 🧪 | ⬜ | ⬜ | — | — |
+| PlayStation 3 controller | 🧪 | 🧪 | 🧪 | 🧪 | — | — |
+| DualShock 4 | 🧪 | 🧪 | 🧪 | 🧪 | — | — |
+| DualSense | 🧪 | 🧪 | 🧪 | 🧪 | — | — |
+| Wii Remote + extensions | 🧪 | 🧪 | 🧪 | 🧪 | — | — |
+| Wii U Pro Controller | 🧪 | 🧪 | 🧪 | 🧪 | — | — |
+| Switch Pro Controller | 🧪 | 🧪 | 🧪 | 🧪 | — | — |
+| Switch Joy-Con | 🧪 | 🧪 | 🧪 | 🧪 | — | — |
 | Switch 2 Joy-Con | ⬜ | ⬜ | ⬜ | ⬜ | — | — |
-| 8BitDo controllers | 🧪 | 🧪 | ⬜ | ⬜ | — | — |
-| Stadia controller | 🧪 | 🧪 | ⬜ | ⬜ | — | — |
+| 8BitDo controllers | 🧪 | 🧪 | 🧪 | 🧪 | — | — |
+| Stadia controller | 🧪 | 🧪 | 🧪 | 🧪 | — | — |
 
 ✅ verified on hardware · 🧪 builds and passes tests, not yet verified · 🚧 in progress · ⬜ planned for v1 · ⛔ blocked · — after v1
 <!-- support-matrix:end -->
