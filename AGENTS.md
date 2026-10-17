@@ -16,7 +16,7 @@ v1 controllers: DS3, DS4, DualSense, Wiimote + extensions, Wii U Pro, Switch Pro
 | `main/` | Boot: load settings, pick input + target, run the loop. |
 | `components/wiimote_anything/` | Wii Remote emulation library, `git subtree` of MaxLiebe/wiimote-anything. Push fixes back with `git subtree push`. |
 | `external/bluepad32/` | Bluepad32 submodule (gamepads, and the BTstack we build on). Its BTstack patches are applied at configure time. |
-| `components/yucca_core/` | `GamepadState`, `InputDriver`, `Target`, `Mapper`, `Settings` (planned). |
+| `components/yucca_core/` | `GamepadState`, `Feedback`, `InputDriver`, `Target`, `Mapper`, `Settings` (memory + NVS). No ESP-IDF headers except `nvs_settings`. |
 | `components/input_*/` | Controller side. v1: `input_bluepad32` (planned). |
 | `components/target_*/` | Console side, one per emulated device (planned). |
 | `support.yaml` | Source of truth for what works. README table is generated from it. |
