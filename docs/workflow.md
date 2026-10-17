@@ -19,7 +19,7 @@ How work moves from idea to merged code. Written for humans and agents.
 3. **Host tests + CI green**: firmware build, host tests, `support.yaml` check.
 4. **Review** against acceptance criteria. Fix in the same PR.
 5. **Hardware test** if the PR changes anything a console sees: the PR names the `docs/hw-tests/` script, a maintainer runs it and files a report.
-6. **Merge.** `support.yaml` goes to `works-in-ci`; a hardware report takes it to `verified`.
+6. **Merge** once CI is green and review is clean. `support.yaml` goes to `works-in-ci`; a hardware report takes it to `verified`.
 
 ## Size
 
