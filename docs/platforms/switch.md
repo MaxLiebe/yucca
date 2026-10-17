@@ -148,7 +148,7 @@ The device starts in this mode before `03 30`. It sends a report only when the s
 
 Sources: [S1] for the hat and stick layout. The Pro button bits follow SDL's parser [S8]. The ZL/ZR bits come from the descriptor's 16-button field and are **UNCERTAIN**.
 
-Emulators that never send 0x3F still pair successfully. Whether a genuine Pro Controller sends 0x3F before `03 30` over BT is **UNCERTAIN**. It's safe to skip, because the console switches to 0x30 within the first few subcommands.
+Whether a genuine Pro Controller sends 0x3F before `03 30` over BT is **UNCERTAIN**. joycontrol sends empty input reports once a second after connecting "until the Switch decides to reply" [S6]. On hardware (2026-10-17), a Switch 2 paged YUCCA during Change Grip and Order, completed SSP and opened 0x11/0x13, then sent no subcommand for 15 s while YUCCA sent nothing. So YUCCA now sends a neutral 0x3F report once a second until the console's first output report.
 
 ### 3.5 Output 0x01 / 0x10 (console to us)
 | Byte | Content |
@@ -338,7 +338,7 @@ Behaviour notes:
   - One gbatemp guide claims nxbt (typenoob's build) works on Switch 2, without detail [S17].
   - Switch-bcon reports Classic BT HID verified on hardware [S15].
   - Conclusion: **the Switch 1 protocol in this doc is accepted by Switch 2**, but pairing is more fragile. Test on both consoles early.
-- **Pairing differences.** None documented beyond the above. Expect the same subcommand handshake. Log any unknown subcommand IDs a Switch 2 sends.
+- **Pairing differences.** Observed 2026-10-17 (v0.1.0): the Switch 2 stays silent after opening the HID channels if the controller sends nothing (see §3.4). Pages from YUCCA after that failed pairing were accepted at baseband and dropped with reason 0x13 within 1 s, before any L2CAP channel. Expect the same subcommand handshake. Log any unknown subcommand IDs a Switch 2 sends.
 - **Rumble.** It was off by default for third-party Pro-compatible pads on Switch 2 until enabled in settings [S13].
 
 ---

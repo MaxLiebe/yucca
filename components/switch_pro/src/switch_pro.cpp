@@ -96,6 +96,7 @@ void Protocol::reset()
     vibration_ = false;
     lights_set_ = false;
     disconnect_ = false;
+    heard_ = false;
     leds_ = 0;
     rumble_left_ = rumble_right_ = 0.f;
 }
@@ -120,6 +121,20 @@ void Protocol::header(uint8_t *out, uint8_t id)
     put_stick(out + 6, state_.lx, state_.ly);
     put_stick(out + 9, state_.rx, state_.ry);
     out[12] = 0x80;  // "vibrator input report": constant in every capture
+}
+
+size_t Protocol::build_hello(uint8_t *out)
+{
+    if (heard_) {
+        return 0;
+    }
+    std::memset(out, 0, kHelloSize);
+    out[0] = 0x3f;
+    out[3] = 0x08;  // hat neutral
+    for (int i = 0; i < 4; i++) {
+        out[5 + i * 2] = 0x80;  // axes centred: 0x8000
+    }
+    return kHelloSize;
 }
 
 size_t Protocol::build_input(uint8_t *out)
@@ -221,6 +236,7 @@ bool Protocol::handle_output(const uint8_t *data, size_t len, uint8_t *reply)
     if (len < 10 || (data[0] != 0x01 && data[0] != 0x10)) {
         return false;  // 0x11/0x12 (MCU) and short packets: ignore
     }
+    heard_ = true;
     rumble_left_ = decode_rumble(data + 2);
     rumble_right_ = decode_rumble(data + 6);
     if (data[0] != 0x01 || len < 11) {
