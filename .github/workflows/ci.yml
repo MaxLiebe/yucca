@@ -16,6 +16,15 @@ jobs:
       - run: pip install pyyaml
       - run: python3 tools/support_matrix.py --check
 
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: WiimoteAnything
+        run: make -C components/wiimote_anything/tests BTSTACK_ROOT=$GITHUB_WORKSPACE/external/bluepad32/external/btstack
+
   firmware:
     runs-on: ubuntu-latest
     steps:
