@@ -9,11 +9,15 @@ One original ESP32, one radio, one BTstack instance shared by the input side (Bl
 
 ## Interfaces (`components/yucca_core`)
 
-- **`GamepadState`**: canonical, controller-agnostic. Buttons by *position* (south/east/west/north), d-pad, shoulders, triggers (analog 0..1), sticks (-1..1), system buttons, optional gyro/accel, battery. Feedback struct going the other way: rumble strength, player LEDs, light colour.
-- **`InputDriver`**: produces `GamepadState` and accepts feedback. v1 has one: `input_bluepad32`, which covers every v1 controller Bluepad32 supports. New controllers land upstream in Bluepad32 where possible, or as a quirks table here.
-- **`Target`**: one emulated console-side device. Lifecycle: `begin()`, `startSync()`, `connect()`, `send(const GamepadState&)`, feedback callback, `forget()`. Owns its own L2CAP PSMs and console recognition.
-- **`Mapper`**: data-driven table from `GamepadState` to a target's layout (by position by default, by label optionally). Remaps are settings, not code.
-- **`Settings`**: NVS-backed key/value store with a schema: selected target, mapping options, paired devices. Written by the web flasher (Web Serial), by controller button combos, or by shell buttons on dedicated hardware.
+Headers live in `components/yucca_core/include/yucca/`. Everything runs on the BTstack run loop, so there is no locking.
+
+- **`GamepadState`** (`gamepad.h`): canonical, controller-agnostic. Buttons by *position* (`South/East/West/North`, shoulders, trigger clicks, stick clicks, `Select/Start/Home/Capture`, d-pad), sticks -1..1 with +y up and the deadzone already applied, analog triggers 0..1, optional gyro/accel, battery %. **`Feedback`** goes the other way: two rumble motors and player LEDs.
+- **`InputDriver`** (`input.h`): reports `on_input_ready(InputLink)`, `on_input_state`, `on_input_gone` to the app; takes `set_scanning`, `apply(Feedback)`, `forget_all`. v1 has one: `input_bluepad32`.
+- **`Target`** (`target.h`): one emulated console-side device. `begin(listener, settings)`, `start_sync()`, `forget()`, `on_input_ready/gone`, `update(state)` on every controller report, `tick(now_ms)` every 20 ms. Reports `connected`, `disconnected`, `sync_changed` and `feedback` to a `TargetListener`. Owns its console's reconnect policy.
+- **`Mapper`** (`mapper.h`): static route table from canonical buttons to a target's bits. `FaceLayout::Position` (default) or `Label` (Xbox-style labels: A presses the console's A).
+- **`Settings`** (`settings.h`): typed key/value store; `MemorySettings` for host tests, `NvsSettings` on the device. Shared keys in `yucca::keys`.
+
+The app in `main/` owns one input and one target and wires them: input state goes to `Target::update`, target feedback goes to `InputDriver::apply`, and the app decides when to scan for controllers and handles the sync/forget gestures.
 
 ## No external buttons
 
