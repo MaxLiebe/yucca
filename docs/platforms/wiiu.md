@@ -141,3 +141,10 @@ Bytes 11+ (unused tail of 16/19/21-byte extension fields): **[unknown]**; send `
 | Nintendo Life forum: Wii U Menu without GamePad — https://www.nintendolife.com/forums/wii-u/please_allow_wii_u_settings_to_be_changed_without_a_gamepad | which controllers navigate the menu (anecdotal) | — |
 
 No public microcontroller project that emulates a Wii U Pro Controller **towards a Wii U** was found (searches turned up hosts that read a real Pro: Bluepad32, BlueRetro, SDL, Linux). BluuBomb + WiimoteEmulator is the only published emulator known to pair with a Wii U, and it presents a Wii Remote, not a Pro Controller.
+
+## 8. How YUCCA implements it
+
+- Target id `wiiu`: `WiiTarget` with `Model::WiiU` (components/target_wii). Same pairing, reconnect and master-role logic as the Wii.
+- Setting `wiiu_mode`: 0 (default) Wii U Pro Controller (`WIIMOTE_EXT_WIIU_PRO`), 1 Wii Remote + Classic Controller for games that do not take the Pro.
+- SSP is off in both modes (`wiimote_config_t.disable_ssp`), set before Bluepad32 powers the radio on.
+- Pro mapping: face buttons by position (A east, B south, X north, Y west, or by label with `face_layout`), L1/R1 to L/R, L2/R2 past half travel to ZL/ZR, L3/R3 to the stick clicks, Start/Select/Home to +/-/HOME. Sticks are scaled to 0x800 ± 0x480. Battery percent becomes the Pro's 0-4 level.

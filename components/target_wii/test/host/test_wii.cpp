@@ -1,3 +1,5 @@
+#include <string>
+
 #include "../../../yucca_core/test/host/check.h"
 #include "fake_wiimote.h"
 #include "yucca/settings.h"
@@ -263,6 +265,69 @@ static void test_battery()
     CHECK(g_wm.battery == 0x10);
 }
 
+static void begin_model(WiiTarget::Model model, int wiiu_mode)
+{
+    wii.set_model(model);
+    settings.set_int(WiiTarget::kWiiuModeKey, wiiu_mode);
+    reset(true);
+    wii.begin(listener, settings);
+}
+
+static void test_wii_identity()
+{
+    begin_model(WiiTarget::Model::Wii, 0);
+    CHECK(std::string(wii.id()) == "wii");
+    CHECK(g_wm.extension == WIIMOTE_EXT_CLASSIC);
+    CHECK(!g_wm.disable_ssp);  // gamepads keep SSP on a Wii
+    CHECK(!wii.pro());
+}
+
+static void test_wiiu_pro_identity_and_mapping()
+{
+    begin_model(WiiTarget::Model::WiiU, 0);
+    CHECK(std::string(wii.id()) == "wiiu");
+    CHECK(std::string(wii.name()) == "Wii U");
+    CHECK(g_wm.extension == WIIMOTE_EXT_WIIU_PRO);
+    CHECK(g_wm.disable_ssp);
+    CHECK(wii.pro());
+
+    GamepadState s;
+    s.set(Button::East, true);
+    s.set(Button::L1, true);
+    s.set(Button::R3, true);
+    s.set(Button::Home, true);
+    s.l2 = 0.6f;
+    s.r2 = 0.4f;
+    s.ry = 0.25f;
+    wii.update(s);
+    CHECK(g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_A]);
+    CHECK(g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_L]);   // shoulder
+    CHECK(!g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_R]);
+    CHECK(g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_ZL]);  // trigger past half
+    CHECK(!g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_ZR]);
+    CHECK(g_wm.buttons[WIIMOTE_BUTTON_PRO_RSTICK]);
+    CHECK(!g_wm.buttons[WIIMOTE_BUTTON_PRO_LSTICK]);
+    CHECK(g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_HOME]);
+    CHECK(!g_wm.buttons[WIIMOTE_BUTTON_A]);     // no Wii Remote buttons on a Pro
+    CHECK(!g_wm.buttons[WIIMOTE_BUTTON_HOME]);
+    CHECK_NEAR(g_wm.axes[WIIMOTE_AXIS_CLASSIC_RY], 0.25);
+    CHECK(g_wm.send_calls == 1);
+}
+
+static void test_wiiu_classic_fallback()
+{
+    begin_model(WiiTarget::Model::WiiU, 1);
+    CHECK(g_wm.extension == WIIMOTE_EXT_CLASSIC);
+    CHECK(g_wm.disable_ssp);  // still a Wii U
+    CHECK(!wii.pro());
+    GamepadState s;
+    s.set(Button::L1, true);
+    wii.update(s);
+    CHECK(g_wm.buttons[WIIMOTE_BUTTON_CLASSIC_ZL]);  // Classic layout
+    wii.set_model(WiiTarget::Model::Wii);
+    settings.set_int(WiiTarget::kWiiuModeKey, 0);
+}
+
 int main()
 {
     RUN(test_first_run_opens_sync);
@@ -278,5 +343,8 @@ int main()
     RUN(test_controller_gone_drops_slave_link);
     RUN(test_feedback);
     RUN(test_battery);
+    RUN(test_wii_identity);
+    RUN(test_wiiu_pro_identity_and_mapping);
+    RUN(test_wiiu_classic_fallback);
     DONE("target_wii");
 }

@@ -1,4 +1,6 @@
 // The Wii: YUCCA is a Wii Remote with a Classic Controller plugged in.
+// The Wii U: a Wii U Pro Controller, or (setting) the same Wii Remote +
+// Classic Controller for games that do not take the Pro Controller.
 #pragma once
 
 #include <cstdint>
@@ -13,8 +15,15 @@ public:
     // WiimoteAnything is a singleton, so this is too.
     static WiiTarget &instance();
 
-    const char *id() const override { return "wii"; }
-    const char *name() const override { return "Wii"; }
+    enum class Model : uint8_t { Wii, WiiU };
+    // Before begin(). Default: Wii.
+    void set_model(Model model) { model_ = model; }
+    Model model() const { return model_; }
+    // The Wii U Pro Controller is presented (Wii U, wiiu_mode 0).
+    bool pro() const { return pro_; }
+
+    const char *id() const override { return model_ == Model::WiiU ? "wiiu" : "wii"; }
+    const char *name() const override { return model_ == Model::WiiU ? "Wii U" : "Wii"; }
 
     void set_fallback_handler(PacketHandler handler) override { fallback_ = handler; }
     void begin(TargetListener &listener, Settings &settings) override;
@@ -33,6 +42,7 @@ public:
 
     // Settings keys (also shown in the web settings page).
     static constexpr const char *kMirrorKey = "wii_mirror";  // int: also press Wii Remote buttons
+    static constexpr const char *kWiiuModeKey = "wiiu_mode";  // int: 0 Pro Controller, 1 Wii Remote + Classic
 
     // WiimoteAnything callbacks (public for the C trampolines and host tests).
     void handle_connected();
@@ -46,10 +56,15 @@ private:
     void try_connect(const char *why);
     void release_inputs();
     void send_feedback();
+    void update_classic(const GamepadState &state);
+    void update_pro(const GamepadState &state);
 
     PacketHandler fallback_ = nullptr;
     TargetListener *listener_ = nullptr;
     Mapper mapper_;
+    Mapper pro_mapper_;
+    Model model_ = Model::Wii;
+    bool pro_ = false;
     bool mirror_core_ = true;
 
     int64_t now_ = 0;
