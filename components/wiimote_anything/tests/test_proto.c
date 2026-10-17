@@ -404,11 +404,72 @@ static void test_wiiu_pro(void)
     }
     CHECK(pkt[1] == 0x20 && (pkt[4] & 0x02) != 0); /* extension always present */
 
+    /* Pro -> Pro re-set keeps the sticks. */
+    wiimote_proto_set_extension(&p, WIIMOTE_EXT_WIIU_PRO);
+    wiimote_proto_build(&p, 0x3d, pkt, sizeof(pkt));
+    decode_pro(pkt + 2, &lx, &rx, &ly, &ry);
+    CHECK(lx == 0x123 && rx == 0xfff);
+
     /* Battery levels. */
     CHECK(wiimote_ext_pro_battery_level(0xc8) == 4);
     CHECK(wiimote_ext_pro_battery_level(0xc0) == 4);
     CHECK(wiimote_ext_pro_battery_level(0x30) == 1);
     CHECK(wiimote_ext_pro_battery_level(0x00) == 0);
+}
+
+static void test_wiiu_pro_ranges_tail_and_crypto(void)
+{
+    wiimote_proto_t p;
+    uint8_t pkt[32];
+    uint8_t plain[32];
+    uint8_t key[16];
+    uint8_t write_key[22] = {0x16, 0x04, 0xa4, 0x00, 0x40, 0x10};
+    const uint8_t arm[] = {0x16, 0x04, 0xa4, 0x00, 0xf0, 0x01, 0xaa};
+    wiimote_crypto_t crypto;
+    int lo, hi, center, i;
+    bool trigger;
+
+    /* Ranges shared by wiimote_set_axis() and the ADC sampler. */
+    CHECK(wiimote_ext_axis_range(WIIMOTE_EXT_WIIU_PRO, WIIMOTE_AXIS_CLASSIC_RY, &lo, &hi, &center, &trigger) == 0);
+    CHECK(lo == 0x380 && hi == 0xc80 && center == 0x800 && !trigger);
+    CHECK(wiimote_ext_axis_range(WIIMOTE_EXT_WIIU_PRO, WIIMOTE_AXIS_CLASSIC_LT, &lo, &hi, &center, &trigger) < 0);
+    CHECK(wiimote_ext_axis_range(WIIMOTE_EXT_CLASSIC, WIIMOTE_AXIS_CLASSIC_LX, &lo, &hi, &center, &trigger) == 0);
+    CHECK(hi == 63 && center == 32);
+    CHECK(wiimote_ext_axis_range(WIIMOTE_EXT_CLASSIC, WIIMOTE_AXIS_CLASSIC_RT, &lo, &hi, &center, &trigger) == 0);
+    CHECK(hi == 31 && trigger);
+
+    /* Stick-click buttons do not leak into a Classic Controller frame. */
+    wiimote_proto_init(&p, WIIMOTE_EXT_CLASSIC, 0xc0);
+    wiimote_proto_build(&p, 0x32, plain, sizeof(plain));
+    wiimote_proto_set_button(&p, WIIMOTE_BUTTON_PRO_LSTICK, true);
+    wiimote_proto_build(&p, 0x32, pkt, sizeof(pkt));
+    CHECK(memcmp(plain, pkt, 10) == 0);
+
+    /* Mode 0x34: the 19 extension bytes past the 11-byte payload are zero. */
+    wiimote_proto_init(&p, WIIMOTE_EXT_WIIU_PRO, 0xc0);
+    CHECK(wiimote_proto_build(&p, 0x34, pkt, sizeof(pkt)) == 23);
+    for (i = 11; i < 19; i++) {
+        CHECK(pkt[4 + i] == 0);
+    }
+
+    /* Encrypted ("old way") init: the stream decrypts to the plain payload. */
+    wiimote_proto_build(&p, 0x3d, plain, sizeof(plain));
+    memset(key, 0, sizeof(key));
+    for (i = 0; i < 10; i++) {
+        key[i] = (uint8_t)(0x21 + i);
+    }
+    wiimote_crypto_fill_secret(key, 2);
+    memcpy(write_key + 6, key, 16);
+    feed(&p, write_key, sizeof(write_key));
+    feed(&p, arm, sizeof(arm));
+    while (take(&p, pkt, 0) > 0) {
+    }
+    CHECK(wiimote_crypto_load_key(&crypto, key) >= 0);
+    wiimote_proto_build(&p, 0x3d, pkt, sizeof(pkt));
+    CHECK(memcmp(pkt + 2, plain + 2, 11) != 0);
+    for (i = 0; i < 11; i++) {
+        CHECK(wiimote_crypto_decrypt_byte(&crypto, pkt[2 + i], (uint8_t)i) == plain[2 + i]);
+    }
 }
 
 int main(void)
@@ -423,6 +484,7 @@ int main(void)
     test_crypto_dolphin_vector(1);
     test_eeprom_status_rumble_ir_mode();
     test_wiiu_pro();
+    test_wiiu_pro_ranges_tail_and_crypto();
     if (g_fails) {
         printf("%d checks failed\n", g_fails);
         return 1;

@@ -762,7 +762,7 @@ static void test_identity(void)
     CHECK(wiimote_bt_set_identity(true, true) == ESP_OK);
     HCI_STATE saved = g_hci_state;
     g_hci_state = HCI_STATE_OFF;
-    apply_ssp_setting();
+    CHECK(apply_ssp_setting() == ESP_OK);
     CHECK(g_ssp == 0);
     apply_identity();
     CHECK(strcmp(g_name, "Nintendo RVL-CNT-01-UC") == 0);
@@ -772,7 +772,8 @@ static void test_identity(void)
     /* Too late once the radio is on: SSP is left as it is. */
     g_ssp = -1;
     g_hci_state = HCI_STATE_WORKING;
-    apply_ssp_setting();
+    CHECK(apply_ssp_setting() == ESP_ERR_INVALID_STATE);
+    CHECK(wiimote_bt_start() == ESP_ERR_INVALID_STATE);
     CHECK(g_ssp == -1);
 
     g_hci_state = saved;

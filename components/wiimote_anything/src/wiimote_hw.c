@@ -84,32 +84,6 @@ static int map_trigger(int raw, const wiimote_axis_cal_t *cal)
     return ((raw - cal->min) * 31) / span;
 }
 
-static int axis_out_range(wiimote_axis_t axis, int *lo, int *hi, int *center, bool *trigger)
-{
-    *trigger = false;
-    switch (axis) {
-    case WIIMOTE_AXIS_NUNCHUK_X:
-    case WIIMOTE_AXIS_NUNCHUK_Y:
-        *lo = 0; *hi = 255; *center = 128;
-        return 0;
-    case WIIMOTE_AXIS_CLASSIC_LX:
-    case WIIMOTE_AXIS_CLASSIC_LY:
-        *lo = 0; *hi = 63; *center = 32;
-        return 0;
-    case WIIMOTE_AXIS_CLASSIC_RX:
-    case WIIMOTE_AXIS_CLASSIC_RY:
-        *lo = 0; *hi = 31; *center = 16;
-        return 0;
-    case WIIMOTE_AXIS_CLASSIC_LT:
-    case WIIMOTE_AXIS_CLASSIC_RT:
-        *lo = 0; *hi = 31; *center = 0;
-        *trigger = true;
-        return 0;
-    default:
-        return -1;
-    }
-}
-
 static int read_adc(int gpio)
 {
     int channel = gpio_to_adc1(gpio);
@@ -316,7 +290,7 @@ void wiimote_hw_poll(void)
         if (s_pins.axis[i].gpio < 0) {
             continue;
         }
-        if (axis_out_range((wiimote_axis_t)i, &lo, &hi, &center, &trigger) != 0) {
+        if (wiimote_ext_axis_range(proto->ext.type, (wiimote_axis_t)i, &lo, &hi, &center, &trigger) != 0) {
             continue;
         }
         raw = read_adc(s_pins.axis[i].gpio);
