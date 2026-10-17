@@ -26,13 +26,20 @@ struct InputLink {
     uint8_t addr[6] = {};
 };
 
+// BTstack's packet handler signature, without pulling in BTstack headers.
+using PacketHandler = void (*)(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
+
 class Target {
 public:
     virtual ~Target() = default;
     virtual const char *id() const = 0;    // settings value, e.g. "wii"
     virtual const char *name() const = 0;  // for logs, e.g. "Wii"
 
-    // Called once, after the Bluetooth stack is up.
+    // Bluetooth traffic that is not for the console (the controller's HID
+    // channels, its pairing events) goes here. Set before begin().
+    virtual void set_fallback_handler(PacketHandler handler) = 0;
+
+    // Called once, after the Bluetooth stack is up and before the input starts.
     virtual void begin(TargetListener &listener, Settings &settings) = 0;
 
     virtual bool has_paired_console() const = 0;

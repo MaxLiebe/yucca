@@ -1,6 +1,8 @@
 // The controller side.
 #pragma once
 
+#include <cstdint>
+
 #include "yucca/gamepad.h"
 #include "yucca/target.h"
 
@@ -24,6 +26,8 @@ public:
     virtual void apply(const Feedback &feedback) = 0;
     // Disconnect and forget every paired controller.
     virtual void forget_all() = 0;
+    // Housekeeping, every 20 ms or so (e.g. keep long rumbles going).
+    virtual void tick(int64_t now_ms) = 0;
 };
 
 }  // namespace yucca
