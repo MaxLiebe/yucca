@@ -1025,14 +1025,11 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
         }
         if (s_link_dropping) {
             gap_disconnect(s_link_handle);  // disconnect() came while paging
-        } else if (s_profile->console_master) {
-            // No sniff, whoever paged. A Switch 2 link (ESP32 slave, gamepad
-            // links beside it) stopped carrying reports for seconds at a
-            // time (v0.1.8 logs); missed sniff anchors are the suspect.
-            queue_policy(s_link_handle, LM_LINK_POLICY_ENABLE_ROLE_SWITCH);
-        } else if (s_link_outgoing && s_link_master) {
+        } else if (s_link_outgoing && s_link_master && !s_profile->console_master) {
             queue_policy(s_link_handle, 0);  // no sniff; stay master
         }
+        // A Switch 2 needs sniff: with it refused (v0.1.9) the console hung up
+        // (0x13) ~100 ms after every connection, before any subcommand.
         break;
     }
     case HCI_EVENT_MODE_CHANGE:
