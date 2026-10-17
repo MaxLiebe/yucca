@@ -57,6 +57,13 @@ typedef struct {
 } wiimote_ext_result_t;
 
 void wiimote_ext_init(wiimote_ext_t *ext, wiimote_extension_t type);
+/**
+ * Raw output range of an axis for the presented extension: sticks map -1..1
+ * onto lo..hi around center; triggers (trigger = true) map 0..1 onto 0..hi.
+ * Returns -1 for an axis that type does not have (Pro triggers are buttons).
+ */
+int wiimote_ext_axis_range(wiimote_extension_t type, wiimote_axis_t axis, int *lo, int *hi, int *center,
+                           bool *trigger);
 /** Wii U Pro battery level (0..4) from a Wii Remote battery byte (0xC8 full). */
 uint8_t wiimote_ext_pro_battery_level(uint8_t battery);
 bool wiimote_ext_connected_bit(const wiimote_ext_t *ext);

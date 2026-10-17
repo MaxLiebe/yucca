@@ -453,6 +453,41 @@ static void pack_classic(const wiimote_ext_t *ext, uint8_t out[6])
     if (classic_down(ext, WIIMOTE_BUTTON_CLASSIC_UP)) out[5] &= (uint8_t)~0x01;
 }
 
+int wiimote_ext_axis_range(wiimote_extension_t type, wiimote_axis_t axis, int *lo, int *hi, int *center,
+                           bool *trigger)
+{
+    *trigger = false;
+    if (type == WIIMOTE_EXT_WIIU_PRO && axis >= WIIMOTE_AXIS_CLASSIC_LX && axis <= WIIMOTE_AXIS_CLASSIC_RY) {
+        /* Real sticks travel about +-1000 counts around 0x800. */
+        *lo = 0x800 - 0x480; *hi = 0x800 + 0x480; *center = 0x800;
+        return 0;
+    }
+    switch (axis) {
+    case WIIMOTE_AXIS_NUNCHUK_X:
+    case WIIMOTE_AXIS_NUNCHUK_Y:
+        *lo = 0; *hi = 255; *center = 128;
+        return 0;
+    case WIIMOTE_AXIS_CLASSIC_LX:
+    case WIIMOTE_AXIS_CLASSIC_LY:
+        *lo = 0; *hi = 63; *center = 32;
+        return 0;
+    case WIIMOTE_AXIS_CLASSIC_RX:
+    case WIIMOTE_AXIS_CLASSIC_RY:
+        *lo = 0; *hi = 31; *center = 16;
+        return 0;
+    case WIIMOTE_AXIS_CLASSIC_LT:
+    case WIIMOTE_AXIS_CLASSIC_RT:
+        if (type == WIIMOTE_EXT_WIIU_PRO) {
+            return -1;
+        }
+        *lo = 0; *hi = 31; *center = 0;
+        *trigger = true;
+        return 0;
+    default:
+        return -1;
+    }
+}
+
 uint8_t wiimote_ext_pro_battery_level(uint8_t battery)
 {
     /* 0xC8 is a full remote (YUCCA maps 100 % there); 0xC0 also counts as full. */

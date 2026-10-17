@@ -435,39 +435,20 @@ esp_err_t wiimote_set_button(wiimote_button_t button, bool pressed)
 
 esp_err_t wiimote_set_axis(wiimote_axis_t axis, float value)
 {
-    int raw;
+    int raw, lo, hi, center;
+    bool trigger;
     if (s_proto == NULL || axis >= WIIMOTE_AXIS_COUNT) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (s_proto->ext.type == WIIMOTE_EXT_WIIU_PRO) {
-        /* Real sticks travel about +-1000 counts around 0x800. */
-        raw = stick_from_unit(value, 0x800 - 0x480, 0x800 + 0x480, 0x800);
-        wiimote_lock();
-        wiimote_proto_set_axis_raw(s_proto, axis, raw);
-        wiimote_unlock();
-        return ESP_OK;
+    if (wiimote_ext_axis_range(s_proto->ext.type, axis, &lo, &hi, &center, &trigger) != 0) {
+        return ESP_ERR_NOT_SUPPORTED; /* e.g. LT/RT on the Pro Controller (ZL/ZR are buttons) */
     }
-    switch (axis) {
-    case WIIMOTE_AXIS_NUNCHUK_X:
-    case WIIMOTE_AXIS_NUNCHUK_Y:
-        raw = stick_from_unit(value, 0, 255, 128);
-        break;
-    case WIIMOTE_AXIS_CLASSIC_LX:
-    case WIIMOTE_AXIS_CLASSIC_LY:
-        raw = stick_from_unit(value, 0, 63, 32);
-        break;
-    case WIIMOTE_AXIS_CLASSIC_RX:
-    case WIIMOTE_AXIS_CLASSIC_RY:
-        raw = stick_from_unit(value, 0, 31, 16);
-        break;
-    case WIIMOTE_AXIS_CLASSIC_LT:
-    case WIIMOTE_AXIS_CLASSIC_RT:
+    if (trigger) {
         if (value < 0.f) value = 0.f;
         if (value > 1.f) value = 1.f;
-        raw = (int)(value * 31.f + 0.5f);
-        break;
-    default:
-        return ESP_ERR_INVALID_ARG;
+        raw = (int)(value * (float)hi + 0.5f);
+    } else {
+        raw = stick_from_unit(value, lo, hi, center);
     }
     wiimote_lock();
     wiimote_proto_set_axis_raw(s_proto, axis, raw);

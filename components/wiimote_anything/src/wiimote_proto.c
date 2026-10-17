@@ -689,8 +689,13 @@ void wiimote_proto_set_extension(wiimote_proto_t *proto, wiimote_extension_t ext
     uint8_t lt = proto->ext.classic_lt, rt = proto->ext.classic_rt;
     int16_t pitch = proto->ext.pitch_dps, roll = proto->ext.roll_dps, yaw = proto->ext.yaw_dps;
     uint8_t pro_battery = proto->ext.pro_battery;
+    uint16_t plx = proto->ext.pro_lx, ply = proto->ext.pro_ly, prx = proto->ext.pro_rx, pry = proto->ext.pro_ry;
     wiimote_ext_init(&proto->ext, extension);
     proto->ext.pro_battery = pro_battery;
+    proto->ext.pro_lx = plx;
+    proto->ext.pro_ly = ply;
+    proto->ext.pro_rx = prx;
+    proto->ext.pro_ry = pry;
     proto->ext.nunchuk_x = nx;
     proto->ext.nunchuk_y = ny;
     proto->ext.nunchuk_ax = ax;

@@ -1524,17 +1524,18 @@ void wiimote_bt_set_external_stack(bool external)
 
 /* SSP is written to the controller during power-on, so it can only be
  * turned off before then. */
-static void apply_ssp_setting(void)
+static esp_err_t apply_ssp_setting(void)
 {
     if (!s_disable_ssp) {
-        return;
+        return ESP_OK;
     }
     if (hci_get_state() != HCI_STATE_OFF) {
         ESP_LOGE(TAG, "disable_ssp: Bluetooth is already on; call wiimote_init() before the host stack");
-        return;
+        return ESP_ERR_INVALID_STATE;
     }
     gap_ssp_set_enable(0);
     ESP_LOGI(TAG, "Secure Simple Pairing off (legacy PIN pairing only)");
+    return ESP_OK;
 }
 
 esp_err_t wiimote_bt_start(void)
@@ -1551,7 +1552,9 @@ esp_err_t wiimote_bt_start(void)
         }
         l2cap_init();
         sdp_init();
-        apply_ssp_setting();
+        if (apply_ssp_setting() != ESP_OK) {
+            return ESP_ERR_INVALID_STATE;
+        }
         setup_services();
         if (hci_power_control(HCI_POWER_ON) != 0) {
             return ESP_FAIL;
@@ -1566,18 +1569,17 @@ esp_err_t wiimote_bt_start(void)
 #endif
     }
 
+    if (apply_ssp_setting() != ESP_OK) {
+        return ESP_ERR_INVALID_STATE;
+    }
     if (on_btstack_thread_or_not_running()) {
         /* Typical: called after btstack_init() and before the host stack
          * (uni_init) powers HCI on. l2cap_init / sdp_init are idempotent
          * enough to be called again by the host stack. */
         l2cap_init();
         sdp_init();
-        apply_ssp_setting();
         setup_services();
     } else {
-        if (s_disable_ssp) {
-            ESP_LOGE(TAG, "disable_ssp: Bluetooth is already on; call wiimote_init() before the host stack");
-        }
         post_request(WM_REQ_SETUP);
     }
     return ESP_OK;
