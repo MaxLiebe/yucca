@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YUCCA installer</title>
+  <meta name="description" content="Install YUCCA on an ESP32 from your browser and choose your console.">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+</head>
+<body>
+  <header>
+    <h1>YUCCA</h1>
+    <p class="tagline">Your Universal Cross-platform Controller Adapter. Play with almost any Bluetooth controller on your console, through an ESP32.</p>
+  </header>
+
+  <main>
+    <section id="unsupported" class="notice" hidden>
+      Your browser can't talk to USB serial devices. Use Chrome or Edge on a computer.
+    </section>
+
+    <section>
+      <h2><span class="step">1</span> Install</h2>
+      <p>Plug in an <strong>original ESP32</strong> board (ESP32-WROOM-32 or WROVER; the S3, C3 and C6 can't talk to a Wii or Switch) with a data USB cable, then:</p>
+      <esp-web-install-button manifest="firmware/manifest.json">
+        <button slot="activate" class="primary">Install YUCCA</button>
+        <span slot="unsupported">Use Chrome or Edge on a computer to install.</span>
+        <span slot="not-allowed">Open this page over https to install.</span>
+      </esp-web-install-button>
+      <p class="hint" id="version-line">Checking for the latest release…</p>
+      <p class="hint">Nothing in the list? Install the USB driver for your board (CP210x or CH340), or hold the BOOT button while you click Install.</p>
+    </section>
+
+    <section>
+      <h2><span class="step">2</span> Settings</h2>
+      <p>Choose your console and options. Close any other serial monitor first.</p>
+      <button id="connect" class="primary">Connect to YUCCA</button>
+      <p id="status" class="hint"></p>
+      <form id="settings" hidden></form>
+      <div id="device" hidden>
+        <button id="sync" type="button">Pair with console</button>
+        <button id="forget" type="button" class="danger">Forget everything</button>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="step">3</span> Pair</h2>
+      <ol>
+        <li>Put your controller in pairing mode (<a href="https://github.com/MaxLiebe/yucca/blob/main/docs/controllers.md">how, per controller</a>).</li>
+        <li>The first time, YUCCA then opens the console's pairing window by itself. On a Wii or Wii U press the red SYNC button; on a Switch open <em>Controllers → Change Grip/Order</em>.</li>
+        <li>Afterwards, turning the controller on is enough.</li>
+      </ol>
+      <p class="hint">No buttons needed on the ESP32: hold <kbd>Select</kbd> + <kbd>Home</kbd> for 3 s to pick the console from the controller, or <kbd>Select</kbd> + <kbd>Start</kbd> for 3 s to pair with a console again.</p>
+    </section>
+
+    <section>
+      <h2>What works</h2>
+      <div id="matrix"><p class="hint">Loading…</p></div>
+    </section>
+  </main>
+
+  <footer>
+    <a href="https://github.com/MaxLiebe/yucca">Source on GitHub</a> · MIT licence
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

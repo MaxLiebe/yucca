@@ -1,0 +1,65 @@
+name: Website
+
+# Builds the installer site from web/, support.yaml and the latest release.
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "support.yaml", "tools/support_matrix.py", ".github/workflows/pages.yml"]
+  workflow_dispatch:  # also started by release.yml
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - name: Site files
+        run: |
+          mkdir -p site/firmware
+          cp -r web/* site/
+          python3 tools/support_matrix.py --json site/support.json
+      - name: Latest release firmware
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Newest release, prereleases (v1.0.0-rc1) included.
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
+          if [ -z "$tag" ]; then
+            echo "No release yet; the installer will say so."
+            exit 0
+          fi
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern 'yucca-*.bin' --dir site/firmware
+          bin=$(cd site/firmware && ls yucca-*.bin | head -1)
+          cat > site/firmware/manifest.json <<JSON
+          {
+            "name": "YUCCA",
+            "version": "${tag}",
+            "new_install_prompt_erase": true,
+            "builds": [{"chipFamily": "ESP32", "parts": [{"path": "${bin}", "offset": 0}]}]
+          }
+          JSON
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

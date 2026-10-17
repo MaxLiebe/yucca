@@ -22,6 +22,7 @@ v1 controllers: DS3, DS4, DualSense, Wiimote + extensions, Wii U Pro, Switch Pro
 | `components/input_bluepad32/` | Controller side: Bluepad32 -> `GamepadState`, feedback to the controller. `src/convert.*` is host-tested. |
 | `components/target_wii/` | Wii: Wii Remote + Classic Controller via WiimoteAnything, reconnect policy. Host-tested against a fake WiimoteAnything. |
 | `components/target_*/` | Other consoles, one per emulated device. |
+| `web/` | Installer + settings website (GitHub Pages, ESP Web Tools, Web Serial). Built by `.github/workflows/pages.yml`. |
 | `support.yaml` | Source of truth for what works. README table is generated from it. |
 | `tools/support_matrix.py` | Validates `support.yaml`, renders the README table. |
 | `docs/architecture.md` | Interfaces and data flow. |
@@ -37,6 +38,7 @@ git submodule update --init --recursive
 idf.py set-target esp32 && idf.py build      # ESP-IDF 5.5 or 6.x
 python3 tools/support_matrix.py --check      # support.yaml valid and README in sync
 python3 tools/support_matrix.py --write      # regenerate the README table
+git tag v0.x.y && git push origin v0.x.y      # release: builds firmware, updates the website
 ```
 
 Host tests (Linux, no hardware) live next to each component under `test/host/` (WiimoteAnything: `tests/`) and run in the CI `host-tests` job. A new component adds its own step there.
