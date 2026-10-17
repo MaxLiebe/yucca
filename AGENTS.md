@@ -13,7 +13,8 @@ v1 controllers: DS3, DS4, DualSense, Wiimote + extensions, Wii U Pro, Switch Pro
 
 | Path | What |
 | --- | --- |
-| `main/` | Boot: load settings, pick input + target, run the loop. |
+| `main/` | Boot: settings, BTstack, pick input + target, 20 ms tick. Thin; logic lives in components. |
+| `components/yucca_app/` | `App`: wires input to target, scanning policy, sync/forget gestures. Host-tested with fakes. |
 | `components/wiimote_anything/` | Wii Remote emulation library, `git subtree` of MaxLiebe/wiimote-anything. Push fixes back with `git subtree push`. |
 | `external/bluepad32/` | Bluepad32 submodule (gamepads, and the BTstack we build on). Its BTstack patches are applied at configure time. |
 | `components/yucca_core/` | `GamepadState`, `Feedback`, `InputDriver`, `Target`, `Mapper`, `Settings` (memory + NVS). No ESP-IDF headers except `nvs_settings`. |
@@ -26,6 +27,7 @@ v1 controllers: DS3, DS4, DualSense, Wiimote + extensions, Wii U Pro, Switch Pro
 | `docs/workflow.md` | How work moves from issue to merge. |
 | `docs/platforms/<x>.md` | Protocol notes per console/controller. Read the one you need, nothing else. |
 | `docs/hw-tests/<x>.md` | Manual test script per target, run by a human on real hardware. |
+| `docs/controllers.md` | How to pair each controller (user-facing). |
 
 ## Commands
 

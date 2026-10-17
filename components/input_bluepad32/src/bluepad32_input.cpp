@@ -34,6 +34,22 @@ InputListener *s_listener;
 bool s_ble = true;
 Feedback s_feedback;
 int64_t s_rumble_sent_ms;
+// Scanning can only start once Bluepad32 finished its setup.
+bool s_init_done;
+bool s_want_scan;
+
+void apply_scanning()
+{
+    if (!s_init_done) {
+        return;
+    }
+    if (s_want_scan) {
+        ESP_LOGI(TAG, "Looking for a controller (put it in pairing mode, or press its PS/Home button)");
+        uni_bt_start_scanning_and_autoconnect_unsafe();
+    } else {
+        uni_bt_stop_scanning_unsafe();
+    }
+}
 
 int64_t now_ms() { return esp_timer_get_time() / 1000; }
 
@@ -88,6 +104,8 @@ void platform_on_init_complete(void)
 {
     // One physical DualSense = one slot (no virtual touchpad mouse).
     uni_virtual_device_set_enabled(false);
+    s_init_done = true;
+    apply_scanning();
 }
 
 uni_error_t platform_on_device_discovered(bd_addr_t, const char *name, uint16_t cod, uint8_t)
@@ -208,12 +226,8 @@ bool Bluepad32Input::ready() const { return s_pad != nullptr; }
 
 void Bluepad32Input::set_scanning(bool on)
 {
-    if (on) {
-        ESP_LOGI(TAG, "Looking for a controller (put it in pairing mode, or press its PS/Home button)");
-        uni_bt_start_scanning_and_autoconnect_unsafe();
-    } else {
-        uni_bt_stop_scanning_unsafe();
-    }
+    s_want_scan = on;
+    apply_scanning();
 }
 
 void Bluepad32Input::apply(const Feedback &feedback)

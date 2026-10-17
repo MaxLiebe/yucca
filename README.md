@@ -4,6 +4,27 @@
 
 Work in progress. Builds on [wii-gamepad-adapter](https://github.com/MaxLiebe/wii-gamepad-adapter) and [WiimoteAnything](https://github.com/MaxLiebe/wiimote-anything).
 
+## Use it
+
+You need an **original ESP32** board (ESP32-WROOM-32 / WROVER; the S3, C3, C6 and H2 lack Bluetooth Classic) and ESP-IDF 5.5 or 6.x. A web installer is coming.
+
+```bash
+git clone --recursive https://github.com/MaxLiebe/yucca.git
+cd yucca
+idf.py set-target esp32
+idf.py build flash monitor
+```
+
+1. Pair your controller ([how, per controller](docs/controllers.md)). The log shows `Gamepad ready`.
+2. With no console paired yet, the console's sync window opens by itself. On a Wii, press the red **SYNC** button within 20 s.
+3. After that, turning the controller on is enough: YUCCA reconnects to it, then to the console.
+
+| Gesture | Effect |
+| --- | --- |
+| Hold **Select + Start** 3 s | Sync with a console again |
+| **BOOT** short press | Same |
+| Hold **BOOT** 5 s | Forget the console and all controllers |
+
 ## What works
 
 Generated from [`support.yaml`](support.yaml). The Wii column already works in [wii-gamepad-adapter](https://github.com/MaxLiebe/wii-gamepad-adapter); it turns green here once ported and retested.
@@ -11,16 +32,16 @@ Generated from [`support.yaml`](support.yaml). The Wii column already works in [
 <!-- support-matrix:start -->
 | Controller | Wii | Wii U | Switch | Switch 2 | PS4 | PS5 |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| PlayStation 3 controller | ⬜ | ⬜ | ⬜ | ⬜ | — | — |
-| DualShock 4 | ⬜ | ⬜ | ⬜ | ⬜ | — | — |
-| DualSense | ⬜ | ⬜ | ⬜ | ⬜ | — | — |
-| Wii Remote + extensions | ⬜ | ⬜ | ⬜ | ⬜ | — | — |
-| Wii U Pro Controller | ⬜ | ⬜ | ⬜ | ⬜ | — | — |
-| Switch Pro Controller | ⬜ | ⬜ | ⬜ | ⬜ | — | — |
-| Switch Joy-Con | ⬜ | ⬜ | ⬜ | ⬜ | — | — |
+| PlayStation 3 controller | 🧪 | ⬜ | ⬜ | ⬜ | — | — |
+| DualShock 4 | 🧪 | ⬜ | ⬜ | ⬜ | — | — |
+| DualSense | 🧪 | ⬜ | ⬜ | ⬜ | — | — |
+| Wii Remote + extensions | 🧪 | ⬜ | ⬜ | ⬜ | — | — |
+| Wii U Pro Controller | 🧪 | ⬜ | ⬜ | ⬜ | — | — |
+| Switch Pro Controller | 🧪 | ⬜ | ⬜ | ⬜ | — | — |
+| Switch Joy-Con | 🧪 | ⬜ | ⬜ | ⬜ | — | — |
 | Switch 2 Joy-Con | ⬜ | ⬜ | ⬜ | ⬜ | — | — |
-| 8BitDo controllers | ⬜ | ⬜ | ⬜ | ⬜ | — | — |
-| Stadia controller | ⬜ | ⬜ | ⬜ | ⬜ | — | — |
+| 8BitDo controllers | 🧪 | ⬜ | ⬜ | ⬜ | — | — |
+| Stadia controller | 🧪 | ⬜ | ⬜ | ⬜ | — | — |
 
 ✅ verified on hardware · 🧪 builds and passes tests, not yet verified · 🚧 in progress · ⬜ planned for v1 · ⛔ blocked · — after v1
 <!-- support-matrix:end -->
