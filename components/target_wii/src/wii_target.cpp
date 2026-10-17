@@ -26,6 +26,8 @@ static constexpr int64_t kRepageDelayMs = 1000;
 static constexpr uint8_t kReasonPowerOff = 0x15;
 // Classic Controller L/R click at the end of the analog travel.
 static constexpr float kTriggerClick = 0.85f;
+// The Pro Controller's ZL/ZR are digital: press at half travel.
+static constexpr float kProTriggerPress = 0.5f;
 
 // Classic Controller buttons the mapper routes; L/R come from the triggers.
 enum : uint32_t {
@@ -42,6 +44,10 @@ enum : uint32_t {
     kCcHome = 1 << 10,
     kCcZL = 1 << 11,
     kCcZR = 1 << 12,
+    kProL = 1 << 13,
+    kProR = 1 << 14,
+    kProLStick = 1 << 15,
+    kProRStick = 1 << 16,
 };
 
 // Classic Controller is a Nintendo layout: a east, b south, x north, y west.
@@ -52,6 +58,16 @@ static const ButtonRoute kRoutes[] = {
     {Button::North, kCcX},      {Button::West, kCcY},        {Button::Start, kCcPlus},
     {Button::Select, kCcMinus}, {Button::Home, kCcHome},     {Button::L1, kCcZL},
     {Button::R1, kCcZR},
+};
+
+// Wii U Pro Controller: same face layout; L/R are the shoulders, ZL/ZR the
+// triggers (digital, from L2/R2), plus the stick clicks.
+static const ButtonRoute kProRoutes[] = {
+    {Button::DpadUp, kCcUp},    {Button::DpadDown, kCcDown}, {Button::DpadLeft, kCcLeft},
+    {Button::DpadRight, kCcRight}, {Button::East, kCcA},      {Button::South, kCcB},
+    {Button::North, kCcX},      {Button::West, kCcY},        {Button::Start, kCcPlus},
+    {Button::Select, kCcMinus}, {Button::Home, kCcHome},     {Button::L1, kProL},
+    {Button::R1, kProR},        {Button::L3, kProLStick},    {Button::R3, kProRStick},
 };
 
 extern "C" {
@@ -80,21 +96,36 @@ WiiTarget &WiiTarget::instance()
 }
 
 WiiTarget::WiiTarget()
-    : mapper_(kRoutes, sizeof(kRoutes) / sizeof(kRoutes[0])), last_connect_ms_(-kReconnectRetryMs)
+    : mapper_(kRoutes, sizeof(kRoutes) / sizeof(kRoutes[0])),
+      pro_mapper_(kProRoutes, sizeof(kProRoutes) / sizeof(kProRoutes[0])), last_connect_ms_(-kReconnectRetryMs)
 {
+}
+
+WiiTarget::Identity WiiTarget::identity() const
+{
+    if (model_ == Model::Wii) {
+        return kWiiRemote;
+    }
+    return pro_ ? kWiiuPro : kWiiuRemote;
 }
 
 void WiiTarget::begin(TargetListener &listener, Settings &settings)
 {
     listener_ = &listener;
-    mapper_.set_layout(static_cast<FaceLayout>(settings.get_int(keys::kFaceLayout, 0)));
+    settings_ = &settings;
+    const auto layout = static_cast<FaceLayout>(settings.get_int(keys::kFaceLayout, 0));
+    mapper_.set_layout(layout);
+    pro_mapper_.set_layout(layout);
     mirror_core_ = settings.get_int(kMirrorKey, 1) != 0;
+    pro_ = model_ == Model::WiiU && settings.get_int(kWiiuModeKey, 0) == 0;
 
     // WiimoteAnything owns the HID PSMs; everything that is not the Wii goes
     // to the controller side.
     wiimote_btstack_set_fallback_handler(fallback_);
     wiimote_config_t cfg = {};
-    cfg.extension = WIIMOTE_EXT_CLASSIC;
+    cfg.extension = pro_ ? WIIMOTE_EXT_WIIU_PRO : WIIMOTE_EXT_CLASSIC;
+    // The Wii U refuses controllers that offer Secure Simple Pairing.
+    cfg.disable_ssp = model_ == Model::WiiU;
     cfg.battery = 0xC0;
     cfg.callbacks = &kCallbacks;
     cfg.external_stack = true;
@@ -102,10 +133,20 @@ void WiiTarget::begin(TargetListener &listener, Settings &settings)
         ESP_LOGE(TAG, "WiimoteAnything failed to start");
     }
 
+    // The library remembers one console. If it was paired as another console
+    // or controller (console menu, wiiu_mode), it is the wrong one: forget it
+    // so the sync window opens for this console.
+    const int32_t bond = settings.get_int(kBondKey, -1);
+    if (wiimote_has_paired_host() && bond >= 0 && bond != identity()) {
+        ESP_LOGI(TAG, "The remembered console was paired as another device; pairing with the %s again.", name());
+        wiimote_forget_host();
+    }
+
     if (wiimote_has_paired_host()) {
-        ESP_LOGI(TAG, "Ready. Turn your controller on; YUCCA then connects to the Wii.");
+        ESP_LOGI(TAG, "Ready as a %s. Turn your controller on; YUCCA then connects to the %s.",
+                 pro_ ? "Wii U Pro Controller" : "Wii Remote + Classic Controller", name());
     } else {
-        ESP_LOGI(TAG, "First run: pair the controller now; the Wii sync window opens afterwards.");
+        ESP_LOGI(TAG, "First run: pair the controller now; the %s sync window opens afterwards.", name());
     }
 }
 
@@ -113,7 +154,7 @@ bool WiiTarget::has_paired_console() const { return wiimote_has_paired_host(); }
 
 void WiiTarget::start_sync()
 {
-    ESP_LOGI(TAG, "Sync: press the red SYNC button on the Wii now (%d s)", WIIMOTE_SYNC_WINDOW_MS / 1000);
+    ESP_LOGI(TAG, "Sync: press the SYNC button on the %s now (%d s)", name(), WIIMOTE_SYNC_WINDOW_MS / 1000);
     auto_reconnect_until_ms_ = -1;
     repage_at_ms_ = -1;
     if (connected_) {
@@ -125,7 +166,7 @@ void WiiTarget::start_sync()
 
 void WiiTarget::forget()
 {
-    ESP_LOGW(TAG, "Forgetting the Wii");
+    ESP_LOGW(TAG, "Forgetting the %s", name());
     auto_reconnect_until_ms_ = -1;
     repage_at_ms_ = -1;
     if (connected_) {
@@ -147,7 +188,7 @@ void WiiTarget::try_connect(const char *why)
         return;
     }
     last_connect_ms_ = now_;
-    ESP_LOGI(TAG, "Connecting to the Wii (%s)", why);
+    ESP_LOGI(TAG, "Connecting to the %s (%s)", name(), why);
     wiimote_connect();
 }
 
@@ -162,7 +203,7 @@ void WiiTarget::on_input_ready(const InputLink &link)
     }
     last_connect_ms_ = now_ - kReconnectRetryMs;  // allow an immediate attempt
     if (!wiimote_has_paired_host() && !syncing_) {
-        ESP_LOGI(TAG, "No Wii paired yet: opening the sync window.");
+        ESP_LOGI(TAG, "No %s paired yet: opening the sync window.", name());
         start_sync();
     } else {
         try_connect("controller ready");
@@ -180,17 +221,67 @@ void WiiTarget::on_input_gone()
         // coming back. As master, keep it: dropping a remote mid-game makes
         // some games hang on the "reconnect" screen. Inputs are released, so
         // the Wii simply sees an idle remote until the controller returns.
-        ESP_LOGI(TAG, "Releasing the Wii until the controller is back");
+        ESP_LOGI(TAG, "Releasing the %s until the controller is back", name());
         we_dropped_ = true;
         wiimote_disconnect();
     } else if (connected_) {
-        ESP_LOGI(TAG, "Keeping the Wii link; waiting for the controller to come back");
+        ESP_LOGI(TAG, "Keeping the %s link; waiting for the controller to come back", name());
     }
 }
 
 static void set_cc(uint32_t mask, uint32_t bit, wiimote_button_t button) { wiimote_set_button(button, (mask & bit) != 0); }
 
 void WiiTarget::update(const GamepadState &state)
+{
+    if (pro_) {
+        update_pro(state);
+    } else {
+        update_classic(state);
+    }
+
+    if (state.battery != battery_sent_ && state.battery >= 0) {
+        // The Wii warns below 0x20, so only an empty controller reports low.
+        // In Pro mode the library turns this into the Pro's 0..4 level.
+        battery_sent_ = state.battery;
+        wiimote_set_battery(state.battery == 0 ? 0x10 : static_cast<uint8_t>(0x20 + state.battery * 0xa8 / 100));
+    }
+
+    // Send this report now instead of at the next 5 ms flush.
+    wiimote_send_now();
+
+    // A bonded remote reconnects when a button is pressed.
+    if (!connected_ && state.any_input()) {
+        try_connect("button press");
+    }
+}
+
+void WiiTarget::update_pro(const GamepadState &state)
+{
+    const uint32_t b = pro_mapper_.map(state);
+    set_cc(b, kCcUp, WIIMOTE_BUTTON_CLASSIC_UP);
+    set_cc(b, kCcDown, WIIMOTE_BUTTON_CLASSIC_DOWN);
+    set_cc(b, kCcLeft, WIIMOTE_BUTTON_CLASSIC_LEFT);
+    set_cc(b, kCcRight, WIIMOTE_BUTTON_CLASSIC_RIGHT);
+    set_cc(b, kCcA, WIIMOTE_BUTTON_CLASSIC_A);
+    set_cc(b, kCcB, WIIMOTE_BUTTON_CLASSIC_B);
+    set_cc(b, kCcX, WIIMOTE_BUTTON_CLASSIC_X);
+    set_cc(b, kCcY, WIIMOTE_BUTTON_CLASSIC_Y);
+    set_cc(b, kCcPlus, WIIMOTE_BUTTON_CLASSIC_PLUS);
+    set_cc(b, kCcMinus, WIIMOTE_BUTTON_CLASSIC_MINUS);
+    set_cc(b, kCcHome, WIIMOTE_BUTTON_CLASSIC_HOME);
+    set_cc(b, kProL, WIIMOTE_BUTTON_CLASSIC_L);
+    set_cc(b, kProR, WIIMOTE_BUTTON_CLASSIC_R);
+    set_cc(b, kProLStick, WIIMOTE_BUTTON_PRO_LSTICK);
+    set_cc(b, kProRStick, WIIMOTE_BUTTON_PRO_RSTICK);
+    wiimote_set_button(WIIMOTE_BUTTON_CLASSIC_ZL, state.l2 >= kProTriggerPress);
+    wiimote_set_button(WIIMOTE_BUTTON_CLASSIC_ZR, state.r2 >= kProTriggerPress);
+    wiimote_set_axis(WIIMOTE_AXIS_CLASSIC_LX, state.lx);
+    wiimote_set_axis(WIIMOTE_AXIS_CLASSIC_LY, state.ly);
+    wiimote_set_axis(WIIMOTE_AXIS_CLASSIC_RX, state.rx);
+    wiimote_set_axis(WIIMOTE_AXIS_CLASSIC_RY, state.ry);
+}
+
+void WiiTarget::update_classic(const GamepadState &state)
 {
     const uint32_t cc = mapper_.map(state);
     set_cc(cc, kCcUp, WIIMOTE_BUTTON_CLASSIC_UP);
@@ -230,20 +321,6 @@ void WiiTarget::update(const GamepadState &state)
     }
     // HOME on the remote always works, even in screens that ignore the CC.
     set_cc(cc, kCcHome, WIIMOTE_BUTTON_HOME);
-
-    if (state.battery != battery_sent_ && state.battery >= 0) {
-        // The Wii warns below 0x20, so only an empty controller reports low.
-        battery_sent_ = state.battery;
-        wiimote_set_battery(state.battery == 0 ? 0x10 : static_cast<uint8_t>(0x20 + state.battery * 0xa8 / 100));
-    }
-
-    // Send this report now instead of at the next 5 ms flush.
-    wiimote_send_now();
-
-    // A bonded remote reconnects when a button is pressed.
-    if (!connected_ && state.any_input()) {
-        try_connect("button press");
-    }
 }
 
 void WiiTarget::release_inputs() { update(GamepadState{}); }
@@ -261,7 +338,7 @@ void WiiTarget::tick(int64_t now_ms)
     } else if (auto_reconnect_until_ms_ >= 0) {
         if (now_ >= auto_reconnect_until_ms_) {
             auto_reconnect_until_ms_ = -1;
-            ESP_LOGI(TAG, "Wii did not come back. Press a controller button to retry.");
+            ESP_LOGI(TAG, "%s did not come back. Press a controller button to retry.", name());
         } else if (wiimote_is_connecting()) {
             auto_next_page_ms_ = now_ + kAutoReconnectGapMs;
         } else if (now_ >= auto_next_page_ms_) {
@@ -292,7 +369,7 @@ void WiiTarget::handle_connected()
         // The ESP32 radio cannot reach a controller while it is the slave on
         // a Wii link, so never sit on the Wii link without one. The pairing is
         // stored; the Wii is paged again when a controller is ready.
-        ESP_LOGI(TAG, "Wii paired. Releasing it until a controller is connected.");
+        ESP_LOGI(TAG, "%s paired. Releasing it until a controller is connected.", name());
         we_dropped_ = true;
         wiimote_disconnect();
         return;
@@ -301,7 +378,7 @@ void WiiTarget::handle_connected()
         // The Wii paged us (sync). As its slave the ESP32 radio starves the
         // controller link, so hang up and page the Wii ourselves: the pager
         // stays master of both links.
-        ESP_LOGI(TAG, "Wii connected with the ESP32 as slave; reconnecting as master.");
+        ESP_LOGI(TAG, "%s connected with the ESP32 as slave; reconnecting as master.", name());
         we_dropped_ = true;
         repage_at_ms_ = now_ + kRepageDelayMs;
         wiimote_disconnect();
@@ -309,7 +386,11 @@ void WiiTarget::handle_connected()
     }
     auto_reconnect_until_ms_ = -1;
     repage_at_ms_ = -1;
-    ESP_LOGI(TAG, "Wii connected");
+    ESP_LOGI(TAG, "%s connected", name());
+    if (settings_ != nullptr && settings_->get_int(kBondKey, -1) != identity()) {
+        settings_->set_int(kBondKey, identity());
+        settings_->commit();
+    }
     if (listener_ != nullptr) {
         listener_->on_target_connected();
     }
@@ -326,7 +407,7 @@ void WiiTarget::handle_disconnected()
     const uint8_t reason = wiimote_last_disconnect_reason();
     const bool ours = we_dropped_;
     we_dropped_ = false;
-    ESP_LOGI(TAG, "Wii disconnected (reason 0x%02x%s)", reason, ours ? ", by us" : "");
+    ESP_LOGI(TAG, "%s disconnected (reason 0x%02x%s)", name(), reason, ours ? ", by us" : "");
     if (was_up && listener_ != nullptr) {
         listener_->on_target_disconnected();
     }
@@ -343,7 +424,7 @@ void WiiTarget::handle_disconnected()
 void WiiTarget::handle_leds(uint8_t mask)
 {
     leds_ = mask;
-    ESP_LOGI(TAG, "Wii player LEDs: 0x%x", mask);
+    ESP_LOGI(TAG, "%s player LEDs: 0x%x", name(), mask);
     send_feedback();
 }
 
@@ -362,7 +443,7 @@ void WiiTarget::handle_sync(bool active)
     // Also fires right before `connected` when the Wii paired, so ask the
     // library rather than our own flag.
     if (!active && !wiimote_is_connected()) {
-        ESP_LOGI(TAG, "Sync window closed without a Wii. Try again from the controller.");
+        ESP_LOGI(TAG, "Sync window closed without a %s. Try again from the controller.", name());
     }
     if (listener_ != nullptr) {
         listener_->on_target_sync_changed(active);
