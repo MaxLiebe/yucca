@@ -1,0 +1,32 @@
+name: Work item
+description: One focused change that fits in one PR.
+labels: [work-item]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be true when this is done, in one or two sentences.
+    validations: {required: true}
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: A checklist a reviewer can tick off.
+      value: "- [ ] \n"
+    validations: {required: true}
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Files or components likely touched, and what is explicitly out of scope.
+  - type: textarea
+    id: tests
+    attributes:
+      label: How it is proven
+      description: Host tests that prove it, and the docs/hw-tests script if a console sees the change.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Links to the platform doc, related issues, dependencies (blocked by #...).

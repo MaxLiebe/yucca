@@ -1,0 +1,30 @@
+name: Hardware test report
+description: Results of running a docs/hw-tests script on a real console.
+labels: [hw-test]
+body:
+  - type: input
+    id: firmware
+    attributes: {label: YUCCA firmware version or commit}
+    validations: {required: true}
+  - type: input
+    id: console
+    attributes: {label: Console (model and system firmware)}
+    validations: {required: true}
+  - type: input
+    id: controller
+    attributes: {label: Controller (model and firmware if known)}
+    validations: {required: true}
+  - type: input
+    id: board
+    attributes: {label: ESP32 board}
+  - type: textarea
+    id: results
+    attributes:
+      label: Results
+      description: Paste the test script table with the Result column filled in.
+    validations: {required: true}
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Serial log or btsnoop capture (attach files for long logs).

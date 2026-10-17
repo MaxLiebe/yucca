@@ -1,0 +1,15 @@
+name: Research spike
+description: Time-boxed investigation. Output is a docs/platforms page with a go/no-go, not code.
+labels: [spike]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What needs to be known before building this?
+    validations: {required: true}
+  - type: textarea
+    id: output
+    attributes:
+      label: Expected output
+      value: "- [ ] docs/platforms/<x>.md with transport, pairing, reports, quirks, sources\n- [ ] Go / no-go recommendation\n- [ ] Follow-up work items\n"
