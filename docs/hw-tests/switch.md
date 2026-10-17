@@ -10,8 +10,8 @@ Before the first run, turn on **System Settings > Controllers and Sensors > Pro 
 | --- | --- | --- | --- |
 | 1 | Erase flash, flash, set the console to Switch (web page, or the Select + Home menu: LED 3; Switch 2 is LED 4), boot | Log: `First run: pair the controller now; then open Change Grip/Order on the Switch` | |
 | 2 | Put the controller in pairing mode (see `docs/controllers.md`) | Log: `Gamepad ready: ...`, then `No Switch paired yet: opening the sync window` | |
-| 3 | On the console open **Controllers > Change Grip/Order** (Switch 2: "Change Grip and Order") within 30 s | Log: `Incoming ACL from console ...`, a run of `Subcommand 0x..` lines, then `paired with the ESP32 as slave; reconnecting as master` and `Switch connected` again | |
-| 4 | Press L + R on the controller | The console registers a Pro Controller; the controller shows player LED 1 | |
+| 3 | On the console open **Controllers > Change Grip/Order** (Switch 2: "Change Grip and Order") within 30 s | Log: `Incoming ACL from console ...`, then a run of `Subcommand 0x..` lines; the controller shows player LED 1 | |
+| 4 | Within 2 s of the LED, press L + R on the controller | The console registers a Pro Controller. Log: `paired with the ESP32 as slave; reconnecting as master`, then `Switch connected` again; note whether the grip screen kept the controller across that reconnect | |
 | 5 | HOME menu and System Settings: d-pad, sticks, A, B, X, Y, +, -, HOME, Capture | Menus respond; Capture takes a screenshot | |
 | 6 | **Controllers > Test Input Devices > Test Controller Buttons**: every button, both sticks, stick clicks, L/R, ZL/ZR | Each lights up as in `docs/platforms/switch.md` section 3; sticks reach the circle edge in all directions | |
 | 7 | **Calibrate Control Sticks** screen | Sticks rest in the centre and reach the outer ring | |

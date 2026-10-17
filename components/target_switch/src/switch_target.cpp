@@ -24,8 +24,13 @@ static constexpr int64_t kAutoReconnectGapMs = 100;
 // Re-page this soon after dropping a link on which the ESP32 is the slave.
 static constexpr int64_t kRepageDelayMs = 1000;
 // On a slave link (the console paged us to pair), stay until the console has
-// set the player lights, or this long, so it finishes registering us.
-static constexpr int64_t kSlaveGraceMs = 5000;
+// set the player lights and this long after, so it finishes the handshake
+// (38/48/40 can follow) and the L + R grip confirmation...
+static constexpr int64_t kPairedSettleMs = 2000;
+// ...or this long without lights: the grip screen is slow.
+static constexpr int64_t kSlaveGraceMs = 15000;
+// After 06 00, wait at most this long for the ACK to leave before hanging up.
+static constexpr int64_t kAckWaitMs = 200;
 // Before the player lights are set the console is busy with the handshake;
 // flooding it makes pairing fail, so full reports go out at most this often.
 static constexpr int64_t kHandshakeReportMs = 60;
@@ -251,17 +256,28 @@ void SwitchTarget::tick(int64_t now_ms)
         if (we_dropped_) {
             // Hanging up; the disconnect event follows.
         } else if (proto_ && proto_->disconnect_requested()) {
-            // Subcommand 06 00: the console is going to sleep. The ACK went
-            // out with the reply; a button press pages it again.
-            ESP_LOGI(TAG, "%s asked us to disconnect", name());
-            hang_up();
+            // Subcommand 06 00: the console is going to sleep. Hang up once
+            // the ACK is out; a button press pages it again.
+            if (disconnect_seen_ms_ < 0) {
+                disconnect_seen_ms_ = now_;
+            }
+            if (reply_count_ > 0) {
+                bthid::flush();
+            }
+            if (reply_count_ == 0 || now_ - disconnect_seen_ms_ >= kAckWaitMs) {
+                ESP_LOGI(TAG, "%s asked us to disconnect", name());
+                hang_up();
+            }
+        } else if (proto_ && proto_->paired() && paired_ms_ < 0) {
+            paired_ms_ = now_;
         } else if (!bthid::link_is_master() &&
-                   ((proto_ && proto_->paired()) || now_ - link_up_ms_ >= kSlaveGraceMs)) {
+                   ((paired_ms_ >= 0 && now_ - paired_ms_ >= kPairedSettleMs) ||
+                    now_ - link_up_ms_ >= kSlaveGraceMs)) {
             // The console paged us (pairing). As its slave the ESP32 radio
             // starves the controller link, so hang up once it registered us
             // and page it ourselves: the pager stays master of both links.
             ESP_LOGI(TAG, "%s paired with the ESP32 as slave; reconnecting as master.", name());
-            repage_at_ms_ = now_ + kRepageDelayMs;
+            repage_at_ms_ = now_;  // hand-off pending: page again once it is down
             hang_up();
         }
         return;
@@ -269,11 +285,7 @@ void SwitchTarget::tick(int64_t now_ms)
     if (!input_present_) {
         return;
     }
-    if (repage_at_ms_ >= 0 && now_ >= repage_at_ms_) {
-        repage_at_ms_ = -1;
-        last_connect_ms_ = now_ - kReconnectRetryMs;
-        try_connect("as master");
-    } else if (auto_reconnect_until_ms_ >= 0) {
+    if (auto_reconnect_until_ms_ >= 0) {
         if (now_ >= auto_reconnect_until_ms_) {
             auto_reconnect_until_ms_ = -1;
             ESP_LOGI(TAG, "%s did not come back. Press a controller button to retry.", name());
@@ -286,7 +298,7 @@ void SwitchTarget::tick(int64_t now_ms)
     }
 }
 
-void SwitchTarget::send_feedback(bool force)
+void SwitchTarget::send_feedback()
 {
     if (listener_ == nullptr) {
         return;
@@ -298,7 +310,7 @@ void SwitchTarget::send_feedback(bool force)
                                 std::fabs(right - rumble_right_sent_) >= kRumbleStep ||
                                 ((left == 0.f) != (rumble_left_sent_ == 0.f)) ||
                                 ((right == 0.f) != (rumble_right_sent_ == 0.f));
-    if (!force && leds == leds_sent_ && !rumble_changed) {
+    if (leds == leds_sent_ && !rumble_changed) {
         return;
     }
     leds_sent_ = leds;
@@ -328,7 +340,7 @@ void SwitchTarget::on_output(const uint8_t *report, size_t len)
         std::memcpy(replies_[reply_count_++], reply, sizeof(reply));
         ESP_LOGI(TAG, "Subcommand 0x%02x", proto_->last_subcommand());
     }
-    send_feedback(false);
+    send_feedback();
 }
 
 size_t SwitchTarget::next_input(uint8_t *out, size_t cap, bool periodic)
@@ -369,8 +381,9 @@ void SwitchTarget::on_link(bool up)
         proto_->reset();
         proto_->set_state(state_);
         reply_count_ = 0;
-        connected_ = true;
         link_up_ms_ = now_;
+        paired_ms_ = -1;
+        disconnect_seen_ms_ = -1;
         last_report_ms_ = now_ - kHandshakeReportMs;
         auto_reconnect_until_ms_ = -1;
         if (!input_present_) {
@@ -380,6 +393,7 @@ void SwitchTarget::on_link(bool up)
             hang_up();
             return;
         }
+        connected_ = true;
         if (bthid::link_is_master()) {
             repage_at_ms_ = -1;
         }
@@ -393,7 +407,7 @@ void SwitchTarget::on_link(bool up)
     const bool was_up = connected_;
     connected_ = false;
     reply_count_ = 0;
-    send_feedback(false);
+    send_feedback();
     const uint8_t reason = bthid::last_disconnect_reason();
     const bool ours = we_dropped_ || (proto_ && proto_->disconnect_requested());
     we_dropped_ = false;
@@ -402,7 +416,14 @@ void SwitchTarget::on_link(bool up)
         listener_->on_target_disconnected();
     }
     if (repage_at_ms_ >= 0) {
-        repage_at_ms_ = now_ + kRepageDelayMs;  // counted from the link being gone
+        // Slave hand-off: page the console as master from now on, with
+        // retries (it may still be busy on the grip screen).
+        repage_at_ms_ = -1;
+        if (input_present_) {
+            auto_reconnect_until_ms_ = now_ + kAutoReconnectWindowMs;
+            auto_next_page_ms_ = now_ + kRepageDelayMs;
+        }
+        return;
     }
     if (ours || !input_present_ || !was_up) {
         return;

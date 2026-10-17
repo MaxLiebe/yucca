@@ -52,7 +52,7 @@ public:
 
 private:
     void try_connect(const char *why);
-    void send_feedback(bool force);
+    void send_feedback();
     void hang_up();
 
     PacketHandler fallback_ = nullptr;
@@ -77,7 +77,9 @@ private:
     int64_t link_up_ms_ = 0;
     int64_t auto_reconnect_until_ms_ = -1;
     int64_t auto_next_page_ms_ = 0;
-    int64_t repage_at_ms_ = -1;
+    int64_t repage_at_ms_ = -1;  // >= 0: slave hand-off in progress
+    int64_t paired_ms_ = -1;
+    int64_t disconnect_seen_ms_ = -1;
     uint8_t leds_sent_ = 0;
     float rumble_left_sent_ = 0;
     float rumble_right_sent_ = 0;

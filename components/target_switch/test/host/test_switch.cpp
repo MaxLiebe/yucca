@@ -214,7 +214,9 @@ static void test_no_controller_no_page()
     CHECK(g_bt.connect_calls == 0);
     // A console that pairs while no controller is there is let go at once.
     link_up(*t, false);
-    CHECK(g_bt.disconnect_calls == 1 && listener.connected == 0);
+    CHECK(g_bt.disconnect_calls == 1 && listener.connected == 0 && !t->connected());
+    link_down(*t, 0x16);
+    CHECK(listener.disconnected == 0);  // never reported up, so never down
     delete t;
 }
 
@@ -354,7 +356,9 @@ static void test_slave_pairing_repages_as_master()
     advance(*t, 1000);
     CHECK(g_bt.disconnect_calls == 0);  // registering us
     handshake(*t);
-    advance(*t, 20);
+    advance(*t, 1900);
+    CHECK(g_bt.disconnect_calls == 0);  // lights set: a moment for L + R
+    advance(*t, 200);
     CHECK(g_bt.disconnect_calls == 1);
     advance(*t, 200);
     CHECK(g_bt.disconnect_calls == 1);  // once
@@ -364,8 +368,14 @@ static void test_slave_pairing_repages_as_master()
     CHECK(g_bt.connect_calls == 0);
     advance(*t, 200);
     CHECK(g_bt.connect_calls == 1);
+    // The first page fails (console still busy): retried.
+    g_bt.connecting = false;
+    advance(*t, 1200);
+    CHECK(g_bt.connect_calls == 2);
     link_up(*t, true);
     CHECK(listener.connected == 2);
+    advance(*t, 10000);
+    CHECK(g_bt.disconnect_calls == 1);  // master now: stays
     delete t;
 }
 
@@ -375,9 +385,23 @@ static void test_slave_grace_timeout()
     t->on_input_ready(classic_link());
     g_bt.host = true;
     link_up(*t, false);
-    advance(*t, 4900);
+    advance(*t, 14900);
     CHECK(g_bt.disconnect_calls == 0);
     advance(*t, 200);
+    CHECK(g_bt.disconnect_calls == 1);
+    delete t;
+}
+
+static void test_ack_wait_capped()
+{
+    SwitchTarget *t = make(true);
+    t->on_input_ready(classic_link());
+    link_up(*t, true);
+    handshake(*t);
+    sub(*t, 0x06, {0x00});  // the channel never frees up
+    advance(*t, 160);
+    CHECK(g_bt.disconnect_calls == 0);
+    advance(*t, 60);
     CHECK(g_bt.disconnect_calls == 1);
     delete t;
 }
@@ -389,7 +413,9 @@ static void test_console_sleep()
     link_up(*t, true);
     handshake(*t);
     sub(*t, 0x06, {0x00});
-    CHECK(next_reply(*t) == 0x06);  // ACK goes out first
+    advance(*t, 100);
+    CHECK(g_bt.disconnect_calls == 0);  // ACK still queued
+    CHECK(next_reply(*t) == 0x06);      // ACK goes out first
     advance(*t, 20);
     CHECK(g_bt.disconnect_calls == 1);
     link_down(*t, 0x16);
@@ -451,6 +477,7 @@ int main()
     RUN(test_slave_pairing_repages_as_master);
     RUN(test_slave_grace_timeout);
     RUN(test_console_sleep);
+    RUN(test_ack_wait_capped);
     RUN(test_auto_reconnect);
     RUN(test_sync_and_forget);
     DONE("target_switch");
