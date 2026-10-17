@@ -30,8 +30,15 @@ struct TargetEntry {
     yucca::Target &(*get)();
 };
 static yucca::Target &wii() { return yucca::WiiTarget::instance(); }
+static yucca::Target &wiiu()
+{
+    auto &t = yucca::WiiTarget::instance();
+    t.set_model(yucca::WiiTarget::Model::WiiU);
+    return t;
+}
 static const TargetEntry kTargets[] = {
     {{"wii", "Wii"}, wii},
+    {{"wiiu", "Wii U"}, wiiu},
 };
 static constexpr uint8_t kTargetCount = sizeof(kTargets) / sizeof(kTargets[0]);
 static yucca::SettingChoice s_choices[kTargetCount];

@@ -21,6 +21,8 @@ struct FakeWiimote {
     bool buttons[WIIMOTE_BUTTON_COUNT] = {};
     float axes[WIIMOTE_AXIS_COUNT] = {};
     uint8_t battery = 0;
+    wiimote_extension_t extension = WIIMOTE_EXT_NONE;
+    bool disable_ssp = false;
 };
 
 extern FakeWiimote g_wm;

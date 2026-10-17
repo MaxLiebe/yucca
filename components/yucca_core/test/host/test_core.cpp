@@ -120,6 +120,8 @@ static void test_schema()
     CHECK(st.get_int(keys::kFaceLayout, 0) == 1);  // stored as int for the targets
     const SettingSpec *spec = schema_find("wii_mirror");
     CHECK(spec != nullptr && schema_get(st, *spec) == "1");  // default
+    spec = schema_find("wiiu_mode");
+    CHECK(spec != nullptr && schema_get(st, *spec) == "0" && spec->restart);  // Pro Controller by default
     std::string json = schema_json(st);
     CHECK(json.find("\"target\":{\"label\":\"Console\"") != std::string::npos);
     CHECK(json.find("{\"value\":\"switch\",\"label\":\"Switch\"}") != std::string::npos);

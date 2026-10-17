@@ -22,6 +22,7 @@ v1 controllers: DS3, DS4, DualSense, Wiimote + extensions, Wii U Pro, Switch Pro
 | `components/input_bluepad32/` | Controller side: Bluepad32 -> `GamepadState`, feedback to the controller. `src/convert.*` is host-tested. |
 | `components/target_wii/` | Wii: Wii Remote + Classic Controller via WiimoteAnything, reconnect policy. Host-tested against a fake WiimoteAnything. |
 | `components/bt_hid_device/` | Generic Bluetooth HID device transport (SDP, L2CAP 0x11/0x13, pairing, reconnect) for targets that emulate a HID gamepad, e.g. Switch Pro. Host-tested against fake BTstack. |
+| `components/switch_pro/` | Switch Pro Controller protocol (subcommand replies, 0x30 reports, rumble), no Bluetooth. Host-tested. |
 | `components/target_*/` | Other consoles, one per emulated device. |
 | `web/` | Installer + settings website (GitHub Pages, ESP Web Tools, Web Serial). Built by `.github/workflows/pages.yml`. |
 | `support.yaml` | Source of truth for what works. README table is generated from it. |

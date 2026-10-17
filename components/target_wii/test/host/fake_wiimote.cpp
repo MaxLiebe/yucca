@@ -12,6 +12,8 @@ extern "C" {
 esp_err_t wiimote_init(const wiimote_config_t *config)
 {
     g_wm.callbacks = config->callbacks;
+    g_wm.extension = config->extension;
+    g_wm.disable_ssp = config->disable_ssp;
     return ESP_OK;
 }
 void wiimote_btstack_set_fallback_handler(btstack_packet_handler_t) {}
