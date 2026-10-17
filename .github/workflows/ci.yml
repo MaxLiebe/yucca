@@ -24,6 +24,8 @@ jobs:
           submodules: recursive
       - name: yucca_core
         run: make -C components/yucca_core/test/host
+      - name: input_bluepad32
+        run: make -C components/input_bluepad32/test/host
       - name: WiimoteAnything
         run: make -C components/wiimote_anything/tests BTSTACK_ROOT=$GITHUB_WORKSPACE/external/bluepad32/external/btstack
 
