@@ -351,9 +351,15 @@ static void test_rumble_feedback()
     CHECK(listener.feedbacks == n + 1 && listener.feedback.rumble_left < 0.5f);
     const uint8_t quiet[10] = {0x10, 0, 0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40};
     t->on_output(quiet, sizeof(quiet));
-    CHECK(listener.feedback.rumble_left == 0.f);
-    // Link down clears lights and rumble.
+    CHECK(listener.feedback.rumble_left > 0.f);  // stopping is held back too
     t->on_output(buzz, sizeof(buzz));
+    t->on_output(quiet, sizeof(quiet));             // a pulse within one frame: never sent
+    advance(*t, 120);
+    CHECK(listener.feedbacks == n + 2 && listener.feedback.rumble_left == 0.f);
+    advance(*t, 120);
+    // Link down clears lights and rumble at once.
+    t->on_output(buzz, sizeof(buzz));
+    CHECK(listener.feedback.rumble_left > 0.9f);
     link_down(*t, 0x13);
     CHECK(listener.feedback.player_leds == 0 && listener.feedback.rumble_left == 0.f);
     delete t;

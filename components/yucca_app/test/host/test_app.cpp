@@ -149,6 +149,12 @@ static void test_feedback_reaches_controller()
     f.player_leds = 0x2;
     r.app.on_target_feedback(f);
     CHECK(r.input.feedback.player_leds == 0x2);
+    f.rumble_left = 1.f;
+    r.app.on_target_feedback(f);
+    CHECK_NEAR(r.input.feedback.rumble_left, 0.6);  // default strength 60 %
+    r.settings.set_int(keys::kRumble, 0);
+    r.app.on_target_feedback(f);
+    CHECK_NEAR(r.input.feedback.rumble_left, 0.0);
 }
 
 static void test_forget_tells_target_controller_is_gone()

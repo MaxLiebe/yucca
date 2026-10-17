@@ -42,6 +42,7 @@ namespace keys {
 constexpr const char *kTarget = "target";        // str: target id, e.g. "wii"
 constexpr const char *kFaceLayout = "face_layout"; // int: FaceLayout
 constexpr const char *kBle = "ble";              // int: 1 = look for BLE controllers
+constexpr const char *kRumble = "rumble";        // int: rumble strength, percent
 }  // namespace keys
 
 }  // namespace yucca
