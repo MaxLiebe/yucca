@@ -48,13 +48,13 @@ int cmd_set(int argc, char **argv)
         std::printf("ERR usage: yucca_set <key> <value>\n");
         return 1;
     }
-    const char *err = schema_set(*s_settings, argv[1], argv[2]);
+    bool restart = false;
+    const char *err = schema_set(*s_settings, argv[1], argv[2], &restart);
     if (err != nullptr) {
         std::printf("ERR %s\n", err);
         return 1;
     }
-    const SettingSpec *spec = schema_find(argv[1]);
-    if (spec != nullptr && spec->restart) {
+    if (restart) {
         std::printf("OK restarting\n");
         vTaskDelay(pdMS_TO_TICKS(200));
         esp_restart();

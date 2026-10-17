@@ -16,10 +16,10 @@ static const SettingChoice kNoTargets[] = {{"wii", "Wii"}};
 
 static SettingSpec s_schema[] = {
     {keys::kTarget, "Console", SettingType::Choice, 0, 0, 0, kNoTargets, 1, "wii", true},
-    {keys::kFaceLayout, "Face buttons", SettingType::Choice, 0, 0, 0, kFaceLayouts, 2, "0", false},
+    {keys::kFaceLayout, "Face buttons", SettingType::Choice, 0, 0, 0, kFaceLayouts, 2, "0", true},
     {keys::kBle, "Look for Bluetooth LE controllers (Stadia, Xbox)", SettingType::Int, 0, 1, 1, nullptr, 0, nullptr,
      true},
-    {"wii_mirror", "Wii: also press Wii Remote buttons", SettingType::Int, 0, 1, 1, nullptr, 0, nullptr, false},
+    {"wii_mirror", "Wii: also press Wii Remote buttons", SettingType::Int, 0, 1, 1, nullptr, 0, nullptr, true},
 };
 
 void schema_init(const SettingChoice *targets, uint8_t count)
@@ -50,7 +50,7 @@ const SettingSpec *schema_find(const char *key)
 // Choices are stored as strings, except face_layout which components read as int.
 static bool choice_is_int(const SettingSpec &spec) { return std::strcmp(spec.key, keys::kFaceLayout) == 0; }
 
-const char *schema_set(Settings &settings, const char *key, const char *value)
+const char *schema_set(Settings &settings, const char *key, const char *value, bool *restart)
 {
     const SettingSpec *spec = schema_find(key);
     if (spec == nullptr) {
@@ -81,6 +81,9 @@ const char *schema_set(Settings &settings, const char *key, const char *value)
         }
     }
     settings.commit();
+    if (restart != nullptr) {
+        *restart = spec->restart;
+    }
     return nullptr;
 }
 
