@@ -35,6 +35,19 @@ uint8_t hci_send_cmd(const hci_cmd_t *cmd, ...)
     return 0;
 }
 const hci_cmd_t hci_disconnect = {};
+static int g_sniff_handle = -1, g_sniff_interval = -1;  // last pad sniff request; 0 = exit
+uint8_t gap_sniff_mode_enter(hci_con_handle_t h, uint16_t min, uint16_t, uint16_t, uint16_t)
+{
+    g_sniff_handle = h;
+    g_sniff_interval = min;
+    return 0;
+}
+uint8_t gap_sniff_mode_exit(hci_con_handle_t h)
+{
+    g_sniff_handle = h;
+    g_sniff_interval = 0;
+    return 0;
+}
 const hci_cmd_t hci_qos_setup = {};
 const hci_cmd_t hci_create_connection_cancel = {};
 const hci_cmd_t hci_write_inquiry_scan_type = {};
@@ -521,7 +534,30 @@ static void test_console_master_page()
     ev[9] = HCI_ROLE_SLAVE;
     emit(ev, sizeof(ev));
     CHECK(!s_link_master && s_pads_relaxed);
+
+    // The console sniffs at 8 slots: a gamepad sniffs at 16, now and on connect.
+    while (s_qos_inflight != HCI_CON_HANDLE_INVALID) {
+        ev_qos_complete(s_qos_inflight, 0);
+    }
+    tune_link(0x0053, PAD);
+    CHECK(g_sniff_handle == -1);  // console still active
+    uint8_t mc[8] = {HCI_EVENT_MODE_CHANGE, 6, 0, 0x82, 0x00, 2, 8, 0};
+    emit(mc, sizeof(mc));
+    CHECK(g_sniff_handle == 0x0053 && g_sniff_interval == 16);
+    mc[5] = 0;  // active again
+    mc[6] = 0;
+    emit(mc, sizeof(mc));
+    CHECK(g_sniff_interval == 0);
+    mc[5] = 2;
+    mc[6] = 8;
+    emit(mc, sizeof(mc));
+    g_sniff_handle = -1;
+    ev_disconnect(0x0053, 0x13);
+    tune_link(0x0054, PAD);
+    CHECK(g_sniff_handle == 0x0054 && g_sniff_interval == 16);
     ev_disconnect(0x0082, 0x13);
+    CHECK(g_sniff_interval == 0);  // console gone: pads back to active
+    ev_disconnect(0x0054, 0x13);
     CHECK(!connecting() && !s_pads_relaxed);
     begin(kProfile, g_listener);
 }
