@@ -512,9 +512,10 @@ static void test_console_master_page()
     connect();
     CHECK(connecting() && g_role_switch && g_page_timeout == 0x2000);
     CHECK(g_level_at_create == LEVEL_2);  // authenticates with the stored key
+    g_policy_handle = -1;
     ev_conn_complete(SWITCH, 0x0082, 0);
     CHECK(!s_pads_relaxed);  // we paged: master until the console switches roles
-    CHECK(g_policy_handle == 0x0082 && g_policy_bits == LM_LINK_POLICY_ENABLE_ROLE_SWITCH);  // no sniff
+    CHECK(g_policy_handle == -1);  // default policy: the Switch 2 needs sniff
     uint8_t ev[10] = {HCI_EVENT_ROLE_CHANGE, 8, 0};
     put_addr(ev + 3, SWITCH);
     ev[9] = HCI_ROLE_SLAVE;
