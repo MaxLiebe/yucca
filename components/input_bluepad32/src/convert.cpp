@@ -47,7 +47,15 @@ GamepadState convert(const RawPad &raw)
         }
     }
 
-    s.battery = raw.battery == 0 ? -1 : static_cast<int8_t>((raw.battery - 1) * 100 / 254);
+    // 1 is empty; anything above reads at least 1 % so only empty warns.
+    if (raw.battery == 0) {
+        s.battery = -1;
+    } else if (raw.battery == 1) {
+        s.battery = 0;
+    } else {
+        const int pct = ((raw.battery - 1) * 100 + 127) / 254;
+        s.battery = static_cast<int8_t>(pct < 1 ? 1 : pct);
+    }
     return s;
 }
 

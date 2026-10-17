@@ -87,8 +87,8 @@ void pad_rumble(const Feedback &f)
     if (rumbling(f)) {
         // Ask for longer than the refresh period, so it never gaps.
         s_pad->report_parser.play_dual_rumble(s_pad, 0, kRumbleRefreshMs + 1000,
-                                              static_cast<uint8_t>(f.rumble_right * 255),
-                                              static_cast<uint8_t>(f.rumble_left * 255));
+                                              static_cast<uint8_t>(f.rumble_right * 255 + 0.5f),
+                                              static_cast<uint8_t>(f.rumble_left * 255 + 0.5f));
     } else {
         s_pad->report_parser.play_dual_rumble(s_pad, 0, 0, 0, 0);
     }
@@ -146,17 +146,18 @@ uni_error_t platform_on_device_ready(uni_hid_device_t *d)
     }
     s_pad = d;
     ESP_LOGI(TAG, "Gamepad ready: %s, %s (%s, %s)", d->name, uni_gamepad_get_model_name(d->controller_type),
-             bd_addr_to_str(d->conn.btaddr), d->conn.protocol == int(UNI_BT_CONN_PROTOCOL_BLE) ? "BLE" : "Classic");
+             bd_addr_to_str(d->conn.btaddr), d->conn.protocol == UNI_BT_CONN_PROTOCOL_BLE ? "BLE" : "Classic");
+    InputLink link;
+    link.classic = d->conn.protocol == UNI_BT_CONN_PROTOCOL_BR_EDR;
+    link.handle = d->conn.handle;
+    std::memcpy(link.addr, d->conn.btaddr, sizeof(link.addr));
+    // The listener tunes the link first; output reports come after.
+    if (s_listener != nullptr) {
+        s_listener->on_input_ready(link);
+    }
     pad_set_leds(s_feedback.player_leds);
     if (rumbling(s_feedback)) {
         pad_rumble(s_feedback);
-    }
-    InputLink link;
-    link.classic = d->conn.protocol == int(UNI_BT_CONN_PROTOCOL_BR_EDR);
-    link.handle = d->conn.handle;
-    std::memcpy(link.addr, d->conn.btaddr, sizeof(link.addr));
-    if (s_listener != nullptr) {
-        s_listener->on_input_ready(link);
     }
     return UNI_ERROR_SUCCESS;
 }
@@ -250,6 +251,10 @@ void Bluepad32Input::forget_all()
         s_pad = nullptr;
         uni_hid_device_disconnect(pad);
         uni_hid_device_delete(pad);
+        // The disconnect callback no longer matches s_pad, so report it here.
+        if (s_listener != nullptr) {
+            s_listener->on_input_gone();
+        }
     }
     uni_bt_del_keys_unsafe();
 }

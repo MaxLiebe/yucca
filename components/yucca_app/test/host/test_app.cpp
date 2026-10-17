@@ -21,7 +21,14 @@ struct FakeInput : InputDriver {
         scanning = on;
     }
     void apply(const Feedback &f) override { feedback = f; }
-    void forget_all() override { forgets++; }
+    void forget_all() override
+    {
+        forgets++;
+        if (is_ready) {
+            is_ready = false;
+            listener->on_input_gone();
+        }
+    }
     void tick(int64_t) override {}
 };
 
@@ -135,8 +142,36 @@ static void test_feedback_reaches_controller()
     CHECK(r.input.feedback.player_leds == 0x2);
 }
 
+static void test_forget_tells_target_controller_is_gone()
+{
+    Rig r;
+    r.controller_ready();
+    r.app.forget_everything();
+    CHECK(r.target.forgets == 1);
+    CHECK(r.target.gone == 1);
+    CHECK(r.input.scanning);
+}
+
+static void test_combo_waits_for_open_sync_window()
+{
+    Rig r;
+    r.controller_ready();
+    r.target.is_syncing = true;
+    GamepadState s;
+    s.set(Button::Select, true);
+    s.set(Button::Start, true);
+    r.app.on_input_state(s);
+    r.run(3100);
+    CHECK(r.target.syncs == 0);
+    r.target.is_syncing = false;
+    r.run(40);
+    CHECK(r.target.syncs == 1);
+}
+
 int main()
 {
+    RUN(test_forget_tells_target_controller_is_gone);
+    RUN(test_combo_waits_for_open_sync_window);
     RUN(test_scans_until_controller_ready);
     RUN(test_no_scan_while_console_syncs);
     RUN(test_select_start_hold_syncs_once);

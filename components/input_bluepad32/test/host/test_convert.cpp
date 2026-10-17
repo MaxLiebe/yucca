@@ -64,6 +64,8 @@ static void test_battery_and_motion()
     CHECK(!convert(raw).has_motion);
     raw.battery = 1;
     CHECK(convert(raw).battery == 0);
+    raw.battery = 2;
+    CHECK(convert(raw).battery == 1);
     raw.battery = 255;
     CHECK(convert(raw).battery == 100);
     raw.accel[1] = 9.80665f;

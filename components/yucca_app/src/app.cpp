@@ -60,7 +60,7 @@ void App::tick(int64_t now_ms, bool boot_button)
         if (combo_since_ms_ < 0) {
             combo_since_ms_ = now_;
             combo_fired_ = false;
-        } else if (!combo_fired_ && now_ - combo_since_ms_ >= kSyncComboHoldMs) {
+        } else if (!combo_fired_ && !target_.syncing() && now_ - combo_since_ms_ >= kSyncComboHoldMs) {
             combo_fired_ = true;
             start_sync();
         }
