@@ -35,6 +35,13 @@ constexpr uint8_t kQosGuaranteed = 0x02;
 // this rarely: a 1.25 ms poll starved the console's link on a Switch 2 for
 // 40 s at a time.
 constexpr uint32_t kQosRelaxedUs = 10000;
+// While a Switch 2 (console_master) is master, gamepad links use one-slot
+// packets only (DM1, DH1, 2-DH1, 3-DH1; the bits 0x3300 forbid the multi-slot
+// EDR types). A DualSense report (83 bytes with headers) fits a 3-DH1. Each
+// gamepad exchange then takes 2 slots instead of up to 4, leaving the ESP32
+// more time for the console's sniff anchors (v0.1.21: every 42 s the console
+// stopped receiving us for 6.4 s while a gamepad link was up).
+constexpr uint16_t kPadOneSlotTypes = 0x0008 | 0x0010 | 0x3300;
 // Gamepad links never sniff: whenever a gamepad link entered sniff, a
 // Switch 2 left sniff on its own link within 150 ms and dropped it
 // (v0.1.19, docs/platforms/switch.md 9).
@@ -139,6 +146,8 @@ struct {
     uint16_t policy;
 } s_policy_q[4];
 int s_policy_count;
+hci_con_handle_t s_ptype_q[2];
+int s_ptype_count;
 struct {
     hci_con_handle_t handle;
     uint8_t type;
@@ -252,6 +261,9 @@ void pump()
         s_policy_count--;
         hci_send_cmd(&hci_write_link_policy_settings, s_policy_q[s_policy_count].handle,
                      s_policy_q[s_policy_count].policy);
+    } else if (s_ptype_count > 0) {
+        s_ptype_count--;
+        hci_send_cmd(&hci_change_connection_packet_type, s_ptype_q[s_ptype_count], kPadOneSlotTypes);
     } else if (s_qos_count > 0 && s_qos_inflight == HCI_CON_HANDLE_INVALID) {
         s_qos_count--;
         s_qos_inflight = s_qos_q[s_qos_count].handle;
@@ -1086,6 +1098,13 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
             }
         }
         break;
+    case HCI_EVENT_CONNECTION_PACKET_TYPE_CHANGED:
+        if (size >= 7) {
+            ESP_LOGI(TAG, "Link 0x%04x packet types 0x%04x (status 0x%02x)",
+                     unsigned(little_endian_read_16(packet, 3) & 0x0fff), unsigned(little_endian_read_16(packet, 5)),
+                     unsigned(packet[2]));
+        }
+        break;
     case HCI_EVENT_ENCRYPTION_CHANGE:
         if (s_link_handle != HCI_CON_HANDLE_INVALID &&
             hci_event_encryption_change_get_connection_handle(packet) == s_link_handle) {
@@ -1269,6 +1288,10 @@ void tune_link(hci_con_handle_t handle, const bd_addr_t addr)
     }
     ESP_LOGI(TAG, "Gamepad link 0x%04x tuned (%s)", unsigned(handle), s_pads_relaxed ? "relaxed" : "fast");
     queue_policy(handle, LM_LINK_POLICY_ENABLE_ROLE_SWITCH);
+    if (s_profile->console_master && s_ptype_count < 2) {
+        s_ptype_q[s_ptype_count++] = handle;
+        pump();
+    }
     if (s_pads[0] != handle && s_pads[1] != handle) {
         (s_pads[0] == HCI_CON_HANDLE_INVALID ? s_pads[0] : s_pads[1]) = handle;
     }
