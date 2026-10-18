@@ -288,6 +288,11 @@ void SwitchTarget::tick(int64_t now_ms)
             auto_next_page_ms_ = now_;
         }
     }
+    if (console_first()) {
+        // Also no gamepad paging us while the console sets up: a DualSense
+        // retrying its reconnect broke the Switch 2 handshake (v0.1.19).
+        bthid::set_connectable(may_scan());
+    }
     if (connected_) {
         send_feedback();  // rumble changes held back by kRumbleGapMs
         if (we_dropped_) {
@@ -472,9 +477,6 @@ void SwitchTarget::on_link(bool up)
     const bool ours = we_dropped_ || (proto_ && proto_->disconnect_requested());
     we_dropped_ = false;
     ESP_LOGI(TAG, "%s disconnected (reason 0x%02x%s)", name(), reason, ours ? ", by us" : "");
-    if (was_up && listener_ != nullptr) {
-        listener_->on_target_disconnected();
-    }
     if (repage_at_ms_ >= 0) {
         // Slave hand-off: page the console as master from now on, with
         // retries (it may still be busy on the grip screen).
@@ -483,14 +485,15 @@ void SwitchTarget::on_link(bool up)
             auto_reconnect_until_ms_ = now_ + kAutoReconnectWindowMs;
             auto_next_page_ms_ = now_ + kRepageDelayMs;
         }
-        return;
+    } else if (!ours && (input_present_ || console_first()) && was_up) {
+        auto_reconnect_until_ms_ =
+            now_ + (reason == kReasonPowerOff ? kAutoReconnectPowerOffMs : kAutoReconnectWindowMs);
+        auto_next_page_ms_ = now_ + kAutoReconnectFirstMs;
     }
-    if (ours || (!input_present_ && !console_first()) || !was_up) {
-        return;
+    // After the reconnect window is set, so the app sees may_scan() right.
+    if (was_up && listener_ != nullptr) {
+        listener_->on_target_disconnected();
     }
-    auto_reconnect_until_ms_ =
-        now_ + (reason == kReasonPowerOff ? kAutoReconnectPowerOffMs : kAutoReconnectWindowMs);
-    auto_next_page_ms_ = now_ + kAutoReconnectFirstMs;
 }
 
 void SwitchTarget::on_sync(bool active)

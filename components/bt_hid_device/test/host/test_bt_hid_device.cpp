@@ -536,8 +536,8 @@ static void test_console_master_page()
     begin(kProfile, g_listener);
 }
 
-// Switch 2: while it is master, gamepads sniff (and the policy allows it).
-static void test_pads_sniff_while_switch2_master()
+// Switch 2: gamepad links never sniff, also while it is master.
+static void test_pads_never_sniff()
 {
     Profile p2 = kProfile;
     p2.console_master = true;
@@ -547,28 +547,35 @@ static void test_pads_sniff_while_switch2_master()
     }
     g_cmds.clear();
     tune_link(0x0053, PAD);
-    CHECK(g_policy_handle == 0x0053 &&
-          g_policy_bits == (LM_LINK_POLICY_ENABLE_ROLE_SWITCH | LM_LINK_POLICY_ENABLE_SNIFF_MODE));
-    CHECK(count_cmd(&hci_sniff_mode) == 0);  // no console yet: full speed
+    CHECK(g_policy_handle == 0x0053 && g_policy_bits == LM_LINK_POLICY_ENABLE_ROLE_SWITCH);
 
     sync();
     g_have_key = false;
     ev_conn_request(SWITCH, 0x000000);
     ev_conn_complete(SWITCH, 0x0091, 0);  // it paged us: it is master
-    CHECK(s_pads_relaxed && count_cmd(&hci_sniff_mode) == 1 && g_sniff_handle == 0x0053);
-    // The console leaving sniff is left alone.
-    uint8_t mc[8] = {HCI_EVENT_MODE_CHANGE, 6, 0, 0x91, 0x00, 0, 0, 0};
-    emit(mc, sizeof(mc));
-    CHECK(count_cmd(&hci_sniff_mode) == 1);
+    CHECK(s_pads_relaxed && count_cmd(&hci_sniff_mode) == 0);
 
     ev_disconnect(0x0091, 0x13);
-    CHECK(count_cmd(&hci_exit_sniff_mode) == 1 && g_sniff_handle == 0x0053);
     ev_disconnect(0x0053, 0x13);
     end_sync(true);
     while (s_qos_inflight != HCI_CON_HANDLE_INVALID) {
         ev_qos_complete(s_qos_inflight, 0);
     }
+    CHECK(count_cmd(&hci_sniff_mode) == 0 && count_cmd(&hci_exit_sniff_mode) == 0);
     begin(kProfile, g_listener);
+}
+
+// Page scan off on request, but always on while syncing.
+static void test_connectable()
+{
+    set_connectable(false);
+    CHECK(g_connectable == 0);
+    sync();
+    CHECK(g_connectable == 1);
+    end_sync(true);
+    CHECK(g_connectable == 0);
+    set_connectable(true);
+    CHECK(g_connectable == 1);
 }
 
 // The console's link key is kept even when BTstack would not store it.
@@ -710,7 +717,8 @@ int main(int argc, char **)
     RUN(test_disconnect_while_paging);
     RUN(test_qos_one_at_a_time);
     RUN(test_pads_relaxed_while_slave);
-    RUN(test_pads_sniff_while_switch2_master);
+    RUN(test_pads_never_sniff);
+    RUN(test_connectable);
     RUN(test_console_master_page);
     RUN(test_console_link_key_stored);
     RUN(test_held_channels);
