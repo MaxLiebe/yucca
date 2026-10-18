@@ -24,6 +24,8 @@ bool hci_can_send_command_packet_now(void) { return true; }
 static std::vector<const hci_cmd_t *> g_cmds;
 const hci_cmd_t hci_write_link_policy_settings = {};
 static int g_policy_handle = -1, g_policy_bits = -1;  // last link policy written
+const hci_cmd_t hci_change_connection_packet_type = {};
+static int g_ptype_bits = -1;  // last packet types asked for
 const hci_cmd_t hci_sniff_mode = {};
 const hci_cmd_t hci_exit_sniff_mode = {};
 static int g_sniff_handle = -1;  // last sniff enter/exit target
@@ -41,6 +43,13 @@ uint8_t hci_send_cmd(const hci_cmd_t *cmd, ...)
         va_start(ap, cmd);
         g_policy_handle = va_arg(ap, int);
         g_policy_bits = va_arg(ap, int);
+        va_end(ap);
+    }
+    if (cmd == &hci_change_connection_packet_type) {
+        va_list ap;
+        va_start(ap, cmd);
+        va_arg(ap, int);
+        g_ptype_bits = va_arg(ap, int);
         va_end(ap);
     }
     return 0;
@@ -477,6 +486,7 @@ static void test_qos_one_at_a_time()
     tune_link(0x0050, PAD);
     tune_link(0x0051, PAD2);
     CHECK(g_role_requests == 2);
+    CHECK(count_cmd(&hci_change_connection_packet_type) == 0);  // not for a Switch 1 or Wii U
     CHECK(count_cmd(&hci_qos_setup) == 1);
     ev_qos_complete(0x0051, 0);  // queue is LIFO: 0x0051 went first
     CHECK(count_cmd(&hci_qos_setup) == 2);
@@ -550,6 +560,8 @@ static void test_pads_never_sniff()
     g_cmds.clear();
     tune_link(0x0053, PAD);
     CHECK(g_policy_handle == 0x0053 && g_policy_bits == LM_LINK_POLICY_ENABLE_ROLE_SWITCH);
+    // One-slot packets only: no 3- or 5-slot types, EDR 1-slot types allowed.
+    CHECK(count_cmd(&hci_change_connection_packet_type) == 1 && g_ptype_bits == 0x3318);
 
     sync();
     g_have_key = false;
