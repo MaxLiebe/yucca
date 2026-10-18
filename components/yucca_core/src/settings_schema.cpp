@@ -23,6 +23,8 @@ static SettingSpec s_schema[] = {
     {"wii_mirror", "Wii: also press Wii Remote buttons", SettingType::Int, 0, 1, 1, nullptr, 0, nullptr, true},
     {"wiiu_mode", "Wii U: be a Wii Remote + Classic Controller instead of a Pro Controller", SettingType::Int, 0, 1, 0,
      nullptr, 0, nullptr, true},
+    {"sw2_pad_sniff", "Switch 2 test: controller sniff interval in slots (0 = off)", SettingType::Int, 0, 64, 0,
+     nullptr, 0, nullptr, true},
 };
 
 void schema_init(const SettingChoice *targets, uint8_t count)

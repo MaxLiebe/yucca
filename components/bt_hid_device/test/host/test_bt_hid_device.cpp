@@ -586,6 +586,26 @@ static void test_pads_never_sniff()
 }
 
 // Page scan off on request, but always on while syncing.
+static void test_pad_sniff_and_drop()
+{
+    begin(kProfile, g_listener);
+    while (s_qos_inflight != HCI_CON_HANDLE_INVALID) {
+        ev_qos_complete(s_qos_inflight, 0);
+    }
+    set_pad_sniff(17);  // rounded down to even
+    g_cmds.clear();
+    tune_link(0x0054, PAD);
+    CHECK(g_policy_bits == (LM_LINK_POLICY_ENABLE_ROLE_SWITCH | LM_LINK_POLICY_ENABLE_SNIFF_MODE));
+    CHECK(count_cmd(&hci_sniff_mode) == 1 && g_sniff_handle == 0x0054 && s_pad_sniff_slots == 16);
+    const int disc = g_disconnects;
+    drop_pads();
+    CHECK(g_disconnects == disc + 1);
+    ev_disconnect(0x0054, 0x16);
+    drop_pads();
+    CHECK(g_disconnects == disc + 1);  // gone: nothing left to drop
+    set_pad_sniff(0);
+}
+
 static void test_connectable()
 {
     set_connectable(false);
@@ -738,6 +758,7 @@ int main(int argc, char **)
     RUN(test_qos_one_at_a_time);
     RUN(test_pads_relaxed_while_slave);
     RUN(test_pads_never_sniff);
+    RUN(test_pad_sniff_and_drop);
     RUN(test_connectable);
     RUN(test_console_master_page);
     RUN(test_console_link_key_stored);

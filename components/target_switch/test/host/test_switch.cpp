@@ -15,7 +15,8 @@ struct FakeBt {
     const bthid::Profile *profile = nullptr;
     bthid::Listener *listener = nullptr;
     btstack_packet_handler_t fallback = nullptr;
-    bool refuse_page = false;  // the page fails at once (radio busy)
+    bool refuse_page = false;
+    int drop_pads_calls = 0, pad_sniff = -1;  // the page fails at once (radio busy)
     bool host = false, connecting = false, connected = false, syncing = false, master = true, connectable = true;
     uint8_t reason = 0;
     int connect_calls = 0, disconnect_calls = 0, sync_calls = 0, forget_calls = 0, tune_calls = 0;
@@ -54,6 +55,8 @@ uint8_t last_disconnect_reason() { return g_bt.reason; }
 void flush() {}
 void tune_link(hci_con_handle_t, const bd_addr_t) { g_bt.tune_calls++; }
 void set_connectable(bool on) { g_bt.connectable = on; }
+void set_pad_sniff(uint16_t slots) { g_bt.pad_sniff = slots; }
+void drop_pads() { g_bt.drop_pads_calls++; }
 void local_address(bd_addr_t out)
 {
     for (int i = 0; i < 6; i++) {
@@ -267,6 +270,28 @@ static void test_switch2_console_first()
     g_bt.connecting = false;
     advance(*t, 100);
     CHECK(t->may_scan());  // gave up: look for the controller
+    delete t;
+}
+
+static void test_switch2_drops_pad_on_console_drop()
+{
+    settings.set_int("sw2_pad_sniff", 16);
+    SwitchTarget *t = make(true, SwitchTarget::Model::Switch2);
+    CHECK(g_bt.pad_sniff == 16);
+    link_up(*t, false);
+    handshake(*t);
+    advance(*t, 2200);
+    t->on_input_ready(classic_link());
+    link_down(*t, 0x08);
+    CHECK(g_bt.drop_pads_calls == 1);  // the console reconnects alone
+    delete t;
+    settings.set_int("sw2_pad_sniff", 0);
+    t = make(true);
+    CHECK(g_bt.pad_sniff == -1);  // Switch 2 only
+    t->on_input_ready(classic_link());
+    link_up(*t, true);
+    link_down(*t, 0x08);
+    CHECK(g_bt.drop_pads_calls == 0);
     delete t;
 }
 
@@ -570,6 +595,7 @@ int main()
     RUN(test_console_sleep);
     RUN(test_ack_wait_capped);
     RUN(test_auto_reconnect);
+    RUN(test_switch2_drops_pad_on_console_drop);
     RUN(test_sync_and_forget);
     DONE("target_switch");
 }

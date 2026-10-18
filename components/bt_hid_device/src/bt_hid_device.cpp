@@ -162,6 +162,11 @@ uint32_t s_qos_inflight_latency;
 hci_con_handle_t s_pads[2] = {HCI_CON_HANDLE_INVALID, HCI_CON_HANDLE_INVALID};
 bool s_pads_relaxed;
 bool s_connectable = true;
+// Experimental gamepad sniff interval in slots (0: active), and the links
+// waiting for their sniff command.
+uint16_t s_pad_sniff_slots;
+hci_con_handle_t s_sniff_q[2];
+int s_sniff_count;
 
 void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 void connect_watchdog_cb(btstack_timer_source_t *);
@@ -264,6 +269,11 @@ void pump()
     } else if (s_ptype_count > 0) {
         s_ptype_count--;
         hci_send_cmd(&hci_change_connection_packet_type, s_ptype_q[s_ptype_count], kPadOneSlotTypes);
+    } else if (s_sniff_count > 0) {
+        s_sniff_count--;
+        ESP_LOGI(TAG, "Gamepad link 0x%04x: asking for sniff at %u slots", unsigned(s_sniff_q[s_sniff_count]),
+                 unsigned(s_pad_sniff_slots));
+        hci_send_cmd(&hci_sniff_mode, s_sniff_q[s_sniff_count], s_pad_sniff_slots, s_pad_sniff_slots, 1, 0);
     } else if (s_qos_count > 0 && s_qos_inflight == HCI_CON_HANDLE_INVALID) {
         s_qos_count--;
         s_qos_inflight = s_qos_q[s_qos_count].handle;
@@ -1282,6 +1292,18 @@ uint32_t longest_block_ms() { return s_longest_block_ms; }
 uint32_t last_block_rx() { return s_last_block_rx; }
 void flush() { send_reports(false); }
 
+void set_pad_sniff(uint16_t slots) { s_pad_sniff_slots = slots & ~1u; }
+
+void drop_pads()
+{
+    for (auto h : s_pads) {
+        if (h != HCI_CON_HANDLE_INVALID) {
+            ESP_LOGI(TAG, "Dropping gamepad link 0x%04x", unsigned(h));
+            gap_disconnect(h);
+        }
+    }
+}
+
 void tune_link(hci_con_handle_t handle, const bd_addr_t addr)
 {
     if (handle == HCI_CON_HANDLE_INVALID || gap_get_connection_type(handle) != GAP_CONNECTION_ACL ||
@@ -1295,9 +1317,14 @@ void tune_link(hci_con_handle_t handle, const bd_addr_t addr)
         gap_request_role(addr, want);
     }
     ESP_LOGI(TAG, "Gamepad link 0x%04x tuned (%s)", unsigned(handle), s_pads_relaxed ? "relaxed" : "fast");
-    queue_policy(handle, LM_LINK_POLICY_ENABLE_ROLE_SWITCH);
+    queue_policy(handle, LM_LINK_POLICY_ENABLE_ROLE_SWITCH |
+                             (s_pad_sniff_slots > 0 ? LM_LINK_POLICY_ENABLE_SNIFF_MODE : 0));
     if (s_profile->console_master && s_ptype_count < 2) {
         s_ptype_q[s_ptype_count++] = handle;
+        pump();
+    }
+    if (s_pad_sniff_slots > 0 && s_sniff_count < 2) {
+        s_sniff_q[s_sniff_count++] = handle;
         pump();
     }
     if (s_pads[0] != handle && s_pads[1] != handle) {
