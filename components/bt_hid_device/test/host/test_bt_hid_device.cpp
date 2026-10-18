@@ -556,6 +556,14 @@ static void test_pads_sniff_while_switch2_master()
     ev_conn_request(SWITCH, 0x000000);
     ev_conn_complete(SWITCH, 0x0091, 0);  // it paged us: it is master
     CHECK(s_pads_relaxed && count_cmd(&hci_sniff_mode) == 1 && g_sniff_handle == 0x0053);
+    // The console leaves sniff: YUCCA asks for it back.
+    uint8_t mc[8] = {HCI_EVENT_MODE_CHANGE, 6, 0, 0x91, 0x00, 0, 0, 0};
+    emit(mc, sizeof(mc));
+    CHECK(count_cmd(&hci_sniff_mode) == 2 && g_sniff_handle == 0x0091);
+    mc[5] = 2;  // back in sniff: nothing more
+    mc[6] = 8;
+    emit(mc, sizeof(mc));
+    CHECK(count_cmd(&hci_sniff_mode) == 2);
 
     ev_disconnect(0x0091, 0x13);
     CHECK(count_cmd(&hci_exit_sniff_mode) == 1 && g_sniff_handle == 0x0053);

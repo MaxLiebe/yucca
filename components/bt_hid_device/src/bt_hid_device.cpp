@@ -43,6 +43,10 @@ constexpr uint32_t kQosRelaxedUs = 10000;
 constexpr uint16_t kPadSniffSlots = 12;
 constexpr uint16_t kPadSniffAttempt = 2;
 constexpr uint16_t kPadSniffTimeout = 1;
+// Every time a Switch 2 took its link out of sniff (mode 0), the link went
+// silent (0 packets) and the console hung up or put it back in sniff (8
+// slots) a second later. So YUCCA asks for sniff back at once.
+constexpr uint16_t kConsoleSniffSlots = 8;
 
 const Profile *s_profile;
 Listener *s_listener;
@@ -159,8 +163,8 @@ hci_con_handle_t s_pads[2] = {HCI_CON_HANDLE_INVALID, HCI_CON_HANDLE_INVALID};
 bool s_pads_relaxed;
 struct SniffCmd {
     hci_con_handle_t handle;
-    bool enter;
-} s_sniff_q[2];
+    uint16_t slots;  // 0: leave sniff
+} s_sniff_q[3];
 int s_sniff_count;
 
 void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
@@ -265,11 +269,11 @@ void pump()
         // After the policies: a pad's policy must allow sniff first.
         const SniffCmd c = s_sniff_q[0];
         s_sniff_q[0] = s_sniff_q[1];
+        s_sniff_q[1] = s_sniff_q[2];
         s_sniff_count--;
-        ESP_LOGI(TAG, "Gamepad 0x%04x: %s sniff", unsigned(c.handle), c.enter ? "entering" : "leaving");
-        if (c.enter) {
-            hci_send_cmd(&hci_sniff_mode, c.handle, kPadSniffSlots, kPadSniffSlots, kPadSniffAttempt,
-                         kPadSniffTimeout);
+        ESP_LOGI(TAG, "Link 0x%04x: asking for sniff %u slots (0 = leave)", unsigned(c.handle), unsigned(c.slots));
+        if (c.slots != 0) {
+            hci_send_cmd(&hci_sniff_mode, c.handle, c.slots, c.slots, kPadSniffAttempt, kPadSniffTimeout);
         } else {
             hci_send_cmd(&hci_exit_sniff_mode, c.handle);
         }
@@ -305,24 +309,28 @@ void queue_qos(hci_con_handle_t handle, uint8_t type, uint32_t latency_us = kQos
     pump();
 }
 
-// One pending sniff command per pad; a newer one replaces it.
-void pad_sniff(hci_con_handle_t handle, bool enter)
+// One pending sniff command per link; a newer one replaces it.
+void queue_sniff(hci_con_handle_t handle, uint16_t slots)
 {
-    if (!s_profile->console_master) {
-        return;
-    }
     int i = 0;
     while (i < s_sniff_count && s_sniff_q[i].handle != handle) {
         i++;
     }
-    if (i == 2) {
+    if (i == 3) {
         return;
     }
-    s_sniff_q[i] = {handle, enter};
+    s_sniff_q[i] = {handle, slots};
     if (i == s_sniff_count) {
         s_sniff_count++;
     }
     pump();
+}
+
+void pad_sniff(hci_con_handle_t handle, bool enter)
+{
+    if (s_profile->console_master) {
+        queue_sniff(handle, enter ? kPadSniffSlots : 0);
+    }
 }
 
 // Fast polling for the gamepads, or relaxed while the console is our master.
@@ -341,6 +349,8 @@ void set_pads_relaxed(bool relaxed)
         return;
     }
     s_pads_relaxed = relaxed;
+    ESP_LOGI(TAG, "Gamepads %s (pads 0x%04x 0x%04x)", relaxed ? "relaxed" : "fast", unsigned(s_pads[0]),
+             unsigned(s_pads[1]));
     for (auto h : s_pads) {
         if (h != HCI_CON_HANDLE_INVALID) {
             tune_pad_qos(h);
@@ -1026,7 +1036,7 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
         }
         if (hci_event_command_status_get_command_opcode(packet) == HCI_OPCODE_HCI_SNIFF_MODE &&
             hci_event_command_status_get_status(packet) != ERROR_CODE_SUCCESS) {
-            ESP_LOGW(TAG, "Gamepad sniff refused (0x%02x)", unsigned(hci_event_command_status_get_status(packet)));
+            ESP_LOGW(TAG, "Sniff refused (0x%02x)", unsigned(hci_event_command_status_get_status(packet)));
         }
         break;
     case HCI_EVENT_QOS_SETUP_COMPLETE:
@@ -1099,6 +1109,10 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
                      unsigned(hci_event_mode_change_get_mode(packet)),
                      unsigned(hci_event_mode_change_get_status(packet)),
                      unsigned(hci_event_mode_change_get_interval(packet)));
+            if (s_profile->console_master && hci_event_mode_change_get_status(packet) == ERROR_CODE_SUCCESS &&
+                hci_event_mode_change_get_mode(packet) == 0) {
+                queue_sniff(s_link_handle, kConsoleSniffSlots);
+            }
         } else {
             for (auto h : s_pads) {
                 if (h != HCI_CON_HANDLE_INVALID && h == hci_event_mode_change_get_handle(packet)) {
@@ -1291,6 +1305,7 @@ void tune_link(hci_con_handle_t handle, const bd_addr_t addr)
     if (gap_get_role(handle) == HCI_ROLE_SLAVE) {
         gap_request_role(addr, HCI_ROLE_MASTER);
     }
+    ESP_LOGI(TAG, "Gamepad link 0x%04x tuned (%s)", unsigned(handle), s_pads_relaxed ? "relaxed" : "fast");
     queue_policy(handle, LM_LINK_POLICY_ENABLE_ROLE_SWITCH |
                              (s_profile->console_master ? LM_LINK_POLICY_ENABLE_SNIFF_MODE : 0));
     if (s_pads[0] != handle && s_pads[1] != handle) {
