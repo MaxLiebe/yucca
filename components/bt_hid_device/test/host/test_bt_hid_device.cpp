@@ -340,10 +340,11 @@ static void test_console_pairs()
     for (int i = 0; i < 40; i++) {
         tick_report();
     }
+    l2cap_data(0x42, {0xa2, 0x10, 0x00, 0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40});  // rumble only
     g_can_send = true;
     CHECK(longest_block_ms() == 0);  // counted once a report gets through
     tick_report();
-    CHECK(longest_block_ms() >= 300);
+    CHECK(longest_block_ms() >= 300 && last_block_rx() == 1);
 
     // Control channel: SET_PROTOCOL is acknowledged, GET_REPORT refused.
     g_sent.clear();
