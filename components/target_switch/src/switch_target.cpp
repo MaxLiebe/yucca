@@ -22,6 +22,8 @@ static constexpr int64_t kAutoReconnectWindowMs = 60000;
 static constexpr int64_t kAutoReconnectPowerOffMs = 15000;
 static constexpr int64_t kAutoReconnectFirstMs = 200;
 static constexpr int64_t kAutoReconnectGapMs = 100;
+// A page refused at once (radio busy, 0x0c) must not be retried every tick.
+static constexpr int64_t kAutoReconnectBusyMs = 500;
 // Re-page this soon after dropping a link on which the ESP32 is the slave.
 static constexpr int64_t kRepageDelayMs = 1000;
 // On a slave link (the console paged us to pair), stay until the console has
@@ -364,6 +366,7 @@ void SwitchTarget::tick(int64_t now_ms)
         } else if (now_ >= auto_next_page_ms_) {
             last_connect_ms_ = now_ - kReconnectRetryMs;
             try_connect("auto-reconnect");
+            auto_next_page_ms_ = now_ + kAutoReconnectBusyMs;
         }
     }
 }

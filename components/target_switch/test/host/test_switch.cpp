@@ -15,6 +15,7 @@ struct FakeBt {
     const bthid::Profile *profile = nullptr;
     bthid::Listener *listener = nullptr;
     btstack_packet_handler_t fallback = nullptr;
+    bool refuse_page = false;  // the page fails at once (radio busy)
     bool host = false, connecting = false, connected = false, syncing = false, master = true, connectable = true;
     uint8_t reason = 0;
     int connect_calls = 0, disconnect_calls = 0, sync_calls = 0, forget_calls = 0, tune_calls = 0;
@@ -37,7 +38,7 @@ bool syncing() { return g_bt.syncing; }
 void connect()
 {
     g_bt.connect_calls++;
-    g_bt.connecting = true;
+    g_bt.connecting = !g_bt.refuse_page;
 }
 bool connecting() { return g_bt.connecting; }
 bool connected() { return g_bt.connected; }
@@ -523,6 +524,11 @@ static void test_auto_reconnect()
     advance(*t, 1200);
     CHECK(g_bt.connect_calls == 3);
     g_bt.connecting = false;
+    // Refused pages back off instead of spinning every tick.
+    g_bt.refuse_page = true;
+    advance(*t, 1000);
+    CHECK(g_bt.connect_calls >= 4 && g_bt.connect_calls <= 6);
+    g_bt.refuse_page = false;
     advance(*t, 70000);
     const int calls = g_bt.connect_calls;
     g_bt.connecting = false;
