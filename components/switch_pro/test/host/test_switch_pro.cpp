@@ -61,6 +61,7 @@ static void test_handshake()
     CHECK(!pro.heard());
     CHECK(send(pro, sub(0x02), r));
     CHECK(r[0] == 0x21 && r[13] == 0x82 && r[14] == 0x02);
+    CHECK(r[15] == 0x04 && r[16] == 0x21 && r[17] == 0x03);  // firmware 4.33, Pro Controller
     CHECK(r[17] == 0x03);                             // Pro Controller
     CHECK(std::memcmp(r + 19, kAddr, 6) == 0);        // our address, big-endian
     CHECK(r[2] == 0x80);                              // full battery, Pro, not charging

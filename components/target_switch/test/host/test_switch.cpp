@@ -221,6 +221,16 @@ static void test_no_controller_no_page()
     delete t;
 }
 
+// yucca_sync with no controller keeps the console link, for testing it alone.
+static void test_console_only_sync()
+{
+    SwitchTarget *t = make(true);
+    t->start_sync();
+    link_up(*t, false);
+    CHECK(g_bt.disconnect_calls == 0 && t->connected());
+    delete t;
+}
+
 static void test_handshake_and_reports()
 {
     SwitchTarget *t = make(true);
@@ -504,6 +514,7 @@ int main()
     RUN(test_first_run_opens_sync);
     RUN(test_paired_connects);
     RUN(test_no_controller_no_page);
+    RUN(test_console_only_sync);
     RUN(test_handshake_and_reports);
     RUN(test_reply_queue_overflow);
     RUN(test_buttons_and_sticks);
