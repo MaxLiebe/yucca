@@ -354,6 +354,22 @@ uint32_t s_rx_in_block;
 uint32_t s_last_block_rx;
 constexpr uint32_t kBlockLogMs = 300;
 
+// ACL packets the controller holds for a link, not yet acknowledged. The
+// controller's buffers are shared by all links: shows which link holds them
+// when the console link blocks.
+unsigned in_flight(hci_con_handle_t handle)
+{
+    const hci_connection_t *c = handle == HCI_CON_HANDLE_INVALID ? nullptr : hci_connection_for_handle(handle);
+    return c != nullptr ? c->num_packets_sent : 0;
+}
+
+void log_buffers()
+{
+    ESP_LOGW(TAG, "  ACL buffers: %d free; in flight: console %u, pads %u %u",
+             hci_number_free_acl_slots_for_handle(s_link_handle), in_flight(s_link_handle), in_flight(s_pads[0]),
+             in_flight(s_pads[1]));
+}
+
 void note_blocked()
 {
     const uint32_t before = s_blocked_ticks * s_profile->report_period_ms;
@@ -363,6 +379,7 @@ void note_blocked()
     s_blocked_ticks++;
     if (before < kBlockLogMs && s_blocked_ticks * s_profile->report_period_ms >= kBlockLogMs) {
         ESP_LOGW(TAG, "Console link blocked: no input report sent for %u ms", unsigned(kBlockLogMs));
+        log_buffers();
     }
 }
 

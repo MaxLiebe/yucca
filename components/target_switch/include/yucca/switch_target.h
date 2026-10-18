@@ -55,6 +55,8 @@ private:
     // Switch 2: connect to the console before the controller. Its setup
     // fails while a controller link exists (docs/platforms/switch.md 9).
     bool console_first() const { return model_ == Model::Switch2; }
+    // Switch 2: not paging the console back, and its setup is done.
+    bool console_settled() const;
     void try_connect(const char *why);
     void send_feedback();
     void hang_up();
@@ -87,6 +89,8 @@ private:
     int64_t auto_next_page_ms_ = 0;
     int64_t repage_at_ms_ = -1;  // >= 0: slave hand-off in progress
     int64_t paired_ms_ = -1;
+    int64_t scan_from_ms_ = -1;  // Switch 2: inquiry window start
+    bool scan_window_logged_ = false;
     int64_t disconnect_seen_ms_ = -1;
     uint8_t leds_sent_ = 0;
     float rumble_left_sent_ = 0;

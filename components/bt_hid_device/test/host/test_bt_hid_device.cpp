@@ -18,6 +18,8 @@ int g_verbose;
 extern "C" {
 static HCI_STATE g_hci_state = HCI_STATE_OFF;
 HCI_STATE hci_get_state(void) { return g_hci_state; }
+hci_connection_t *hci_connection_for_handle(hci_con_handle_t) { return nullptr; }
+int hci_number_free_acl_slots_for_handle(hci_con_handle_t) { return 0; }
 bool hci_can_send_command_packet_now(void) { return true; }
 static std::vector<const hci_cmd_t *> g_cmds;
 const hci_cmd_t hci_write_link_policy_settings = {};
