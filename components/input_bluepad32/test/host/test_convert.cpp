@@ -4,6 +4,14 @@
 using namespace yucca;
 using namespace yucca::bp32;
 
+// uni_bt_conn.h: NONE 0, BR_EDR 1, BLE 2; classic links stay NONE.
+static void test_classic_link()
+{
+    CHECK(yucca::bp32::is_classic(0, 2));
+    CHECK(yucca::bp32::is_classic(1, 2));
+    CHECK(!yucca::bp32::is_classic(2, 2));
+}
+
 static void test_buttons_by_position()
 {
     RawPad raw;
@@ -80,5 +88,6 @@ int main()
     RUN(test_sticks);
     RUN(test_triggers);
     RUN(test_battery_and_motion);
+    RUN(test_classic_link);
     DONE("input_bluepad32");
 }

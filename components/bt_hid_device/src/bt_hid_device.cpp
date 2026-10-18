@@ -43,10 +43,6 @@ constexpr uint32_t kQosRelaxedUs = 10000;
 constexpr uint16_t kPadSniffSlots = 12;
 constexpr uint16_t kPadSniffAttempt = 2;
 constexpr uint16_t kPadSniffTimeout = 1;
-// Every time a Switch 2 took its link out of sniff (mode 0), the link went
-// silent (0 packets) and the console hung up or put it back in sniff (8
-// slots) a second later. So YUCCA asks for sniff back at once.
-constexpr uint16_t kConsoleSniffSlots = 8;
 
 const Profile *s_profile;
 Listener *s_listener;
@@ -1109,10 +1105,8 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
                      unsigned(hci_event_mode_change_get_mode(packet)),
                      unsigned(hci_event_mode_change_get_status(packet)),
                      unsigned(hci_event_mode_change_get_interval(packet)));
-            if (s_profile->console_master && hci_event_mode_change_get_status(packet) == ERROR_CODE_SUCCESS &&
-                hci_event_mode_change_get_mode(packet) == 0) {
-                queue_sniff(s_link_handle, kConsoleSniffSlots);
-            }
+            // v0.1.15 asked for sniff back here: the request went unanswered
+            // (0x22 after 30 s) and the console still hung up.
         } else {
             for (auto h : s_pads) {
                 if (h != HCI_CON_HANDLE_INVALID && h == hci_event_mode_change_get_handle(packet)) {

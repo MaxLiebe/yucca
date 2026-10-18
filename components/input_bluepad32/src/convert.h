@@ -27,6 +27,11 @@ constexpr uint8_t kDpadDown = 1 << 1;
 constexpr uint8_t kDpadRight = 1 << 2;
 constexpr uint8_t kDpadLeft = 1 << 3;
 
+// Bluepad32 sets a link's protocol only for BLE; classic links stay at
+// UNI_BT_CONN_PROTOCOL_NONE. So anything not BLE is classic. Testing for
+// BR_EDR instead skipped tuning every gamepad link through v0.1.15.
+constexpr bool is_classic(int protocol, int ble) { return protocol != ble; }
+
 struct RawPad {
     uint8_t dpad = 0;
     int32_t axis_x = 0, axis_y = 0, axis_rx = 0, axis_ry = 0;  // -512..511, +y down
