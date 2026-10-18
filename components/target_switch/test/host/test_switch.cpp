@@ -248,10 +248,15 @@ static void test_switch2_console_first()
     CHECK(t->may_scan());  // setup done: look for the controller
     advance(*t, 20);
     CHECK(g_bt.connectable);
+    advance(*t, 59000);
+    CHECK(t->may_scan());
+    advance(*t, 1000);
+    CHECK(!t->may_scan() && g_bt.connectable);  // inquiry window over; paired pads still page us
     t->on_input_ready(classic_link());
     CHECK(g_bt.connect_calls == 1 && g_bt.tune_calls == 1);
     t->on_input_gone();
     CHECK(g_bt.disconnect_calls == 0 && t->connected());  // console kept
+    CHECK(t->may_scan());  // and a new window to find the controller
     link_down(*t, 0x13);
     CHECK(!t->may_scan());  // already when the app hears of the drop
     advance(*t, 300);

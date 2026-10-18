@@ -1,5 +1,6 @@
 #include "yucca/switch_target.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -27,6 +28,11 @@ static constexpr int64_t kRepageDelayMs = 1000;
 // set the player lights and this long after, so it finishes the handshake
 // (38/48/40 can follow) and the L + R grip confirmation...
 static constexpr int64_t kPairedSettleMs = 2000;
+// Switch 2: with the console connected, inquiry for new controllers runs
+// this long after its setup or after the controller left. Then only paired
+// controllers reconnect (they page us): with inquiry running and no
+// controller, the console link stalled for 0.3-0.6 s at a time (v0.1.20).
+static constexpr int64_t kScanWindowMs = 60000;
 // ...or this long without lights: the grip screen is slow.
 static constexpr int64_t kSlaveGraceMs = 15000;
 // After 06 00, wait at most this long for the ACK to leave before hanging up.
@@ -141,11 +147,22 @@ bool SwitchTarget::may_scan() const
     }
     if (connected_) {
         // Switch 2: look for the controller once the console has finished
-        // its setup (player lights, then kPairedSettleMs).
-        return console_first() && paired_ms_ >= 0 && now_ - paired_ms_ >= kPairedSettleMs;
+        // its setup (player lights, then kPairedSettleMs), for a while.
+        return console_settled() && now_ - scan_from_ms_ < kScanWindowMs;
     }
     // Not while paging the console back.
     return auto_reconnect_until_ms_ < 0;
+}
+
+bool SwitchTarget::console_settled() const
+{
+    if (syncing_) {
+        return false;
+    }
+    if (!connected_) {
+        return auto_reconnect_until_ms_ < 0;
+    }
+    return console_first() && scan_from_ms_ >= 0 && now_ >= scan_from_ms_;
 }
 
 void SwitchTarget::start_sync()
@@ -222,6 +239,10 @@ void SwitchTarget::on_input_gone()
     auto_reconnect_until_ms_ = -1;
     repage_at_ms_ = -1;
     if (connected_ && console_first()) {
+        if (scan_from_ms_ >= 0) {
+            scan_from_ms_ = std::max(scan_from_ms_, now_);  // look for it again
+            scan_window_logged_ = false;
+        }
         ESP_LOGI(TAG, "Keeping the %s link; looking for the controller again", name());
     } else if (connected_ && !bthid::link_is_master()) {
         // As the console's slave the radio starves the controller link, so
@@ -291,7 +312,11 @@ void SwitchTarget::tick(int64_t now_ms)
     if (console_first()) {
         // Also no gamepad paging us while the console sets up: a DualSense
         // retrying its reconnect broke the Switch 2 handshake (v0.1.19).
-        bthid::set_connectable(may_scan());
+        bthid::set_connectable(console_settled());
+        if (connected_ && console_settled() && !may_scan() && !scan_window_logged_) {
+            scan_window_logged_ = true;
+            ESP_LOGI(TAG, "Stopped looking for new controllers; a paired one reconnects with its PS/Home button");
+        }
     }
     if (connected_) {
         send_feedback();  // rumble changes held back by kRumbleGapMs
@@ -312,6 +337,7 @@ void SwitchTarget::tick(int64_t now_ms)
             }
         } else if (proto_ && proto_->paired() && paired_ms_ < 0) {
             paired_ms_ = now_;
+            scan_from_ms_ = now_ + kPairedSettleMs;
         } else if (model_ == Model::Switch && !bthid::link_is_master() &&
                    ((paired_ms_ >= 0 && now_ - paired_ms_ >= kPairedSettleMs) ||
                     now_ - link_up_ms_ >= kSlaveGraceMs)) {
@@ -444,6 +470,8 @@ void SwitchTarget::on_link(bool up)
         reply_count_ = 0;
         link_up_ms_ = now_;
         paired_ms_ = -1;
+        scan_from_ms_ = -1;
+        scan_window_logged_ = false;
         disconnect_seen_ms_ = -1;
         last_report_ms_ = now_ - kHelloMs;
         auto_reconnect_until_ms_ = -1;
