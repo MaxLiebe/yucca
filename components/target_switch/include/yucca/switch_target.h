@@ -69,6 +69,9 @@ private:
 
     int64_t now_ = 0;
     bool input_present_ = false;
+    // Sync started with no controller (yucca_sync): keep that console link
+    // anyway, to test the console link on its own.
+    bool console_only_ = false;
     bool connected_ = false;
     bool syncing_ = false;
     bool we_dropped_ = false;

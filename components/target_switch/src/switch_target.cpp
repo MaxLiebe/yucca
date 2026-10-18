@@ -140,6 +140,7 @@ void SwitchTarget::start_sync()
              unsigned(bthid::kSyncWindowMs / 1000));
     auto_reconnect_until_ms_ = -1;
     repage_at_ms_ = -1;
+    console_only_ = !input_present_;
     if (connected_) {
         we_dropped_ = true;
         bthid::disconnect();
@@ -417,7 +418,9 @@ void SwitchTarget::on_link(bool up)
         disconnect_seen_ms_ = -1;
         last_report_ms_ = now_ - kHelloMs;
         auto_reconnect_until_ms_ = -1;
-        if (!input_present_) {
+        if (console_only_ && !input_present_) {
+            ESP_LOGI(TAG, "No controller: keeping the %s link anyway (console-only test)", name());
+        } else if (!input_present_) {
             // Never sit on the console link without a controller: as slave it
             // would block the controller. The pairing is stored.
             ESP_LOGI(TAG, "%s paired. Releasing it until a controller is connected.", name());

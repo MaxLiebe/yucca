@@ -183,7 +183,9 @@ void Protocol::reply_to(uint8_t sub, const uint8_t *args, size_t n, uint8_t *out
     switch (sub) {
     case 0x02: {  // device info
         ack = 0x82;
-        const uint8_t info[12] = {0x03, 0x8b, 0x03, 0x02, addr_[0], addr_[1], addr_[2],
+        // Firmware 4.33, the current Pro Controller release: since 2026-10-18
+        // a Switch 2 drops a controller reporting 3.139 after its setup reads.
+        const uint8_t info[12] = {0x04, 0x21, 0x03, 0x02, addr_[0], addr_[1], addr_[2],
                                   addr_[3], addr_[4], addr_[5], 0x01, 0x01};
         std::memcpy(data, info, sizeof(info));
         break;
