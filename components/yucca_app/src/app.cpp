@@ -24,13 +24,11 @@ void App::begin()
     update_scanning();
 }
 
-// Inquiry for new controllers only when there is none and the console is
-// neither syncing nor connected: an inquiry takes the radio from the console
-// link for seconds. Bonded controllers reconnect by paging us, which needs no
-// inquiry.
+// Inquiry for new controllers only when there is none and the target allows
+// it. Bonded controllers reconnect by paging us, which needs no inquiry.
 void App::update_scanning()
 {
-    const bool want = !input_.ready() && !target_.syncing() && !target_.connected();
+    const bool want = !input_.ready() && target_.may_scan();
     if (scanning_known_ && want == scanning_) {
         return;
     }
@@ -120,6 +118,7 @@ void App::tick(int64_t now_ms, bool boot_button)
 
     target_.tick(now_);
     input_.tick(now_);
+    update_scanning();  // may_scan() can change with time
 }
 
 void App::on_input_ready(const InputLink &link)

@@ -231,6 +231,33 @@ static void test_console_only_sync()
     delete t;
 }
 
+// Switch 2: console first, controller after its setup.
+static void test_switch2_console_first()
+{
+    SwitchTarget *t = make(true, SwitchTarget::Model::Switch2);
+    CHECK(g_bt.connect_calls == 1 && !t->may_scan());  // paged at start, no controller
+    link_up(*t, false);
+    CHECK(g_bt.disconnect_calls == 0 && t->connected() && !t->may_scan());
+    handshake(*t);
+    advance(*t, 1000);
+    CHECK(!t->may_scan());
+    advance(*t, 1100);
+    CHECK(t->may_scan());  // setup done: look for the controller
+    t->on_input_ready(classic_link());
+    CHECK(g_bt.connect_calls == 1 && g_bt.tune_calls == 1);
+    t->on_input_gone();
+    CHECK(g_bt.disconnect_calls == 0 && t->connected());  // console kept
+    link_down(*t, 0x13);
+    advance(*t, 300);
+    CHECK(g_bt.connect_calls == 2 && !t->may_scan());  // paging it back
+    g_bt.connecting = false;
+    advance(*t, 70000);
+    g_bt.connecting = false;
+    advance(*t, 100);
+    CHECK(t->may_scan());  // gave up: look for the controller
+    delete t;
+}
+
 static void test_handshake_and_reports()
 {
     SwitchTarget *t = make(true);
@@ -515,6 +542,7 @@ int main()
     RUN(test_paired_connects);
     RUN(test_no_controller_no_page);
     RUN(test_console_only_sync);
+    RUN(test_switch2_console_first);
     RUN(test_handshake_and_reports);
     RUN(test_reply_queue_overflow);
     RUN(test_buttons_and_sticks);
