@@ -74,6 +74,8 @@ bool link_is_master();
 uint8_t last_disconnect_reason();
 // Longest time the radio had no room for an input report (diagnostics).
 uint32_t longest_block_ms();
+// Packets the console sent during the last logged block (diagnostics).
+uint32_t last_block_rx();
 // Send pending replies now instead of at the next report tick.
 void flush();
 // For a gamepad link: ESP32 master, no sniff, short poll interval.

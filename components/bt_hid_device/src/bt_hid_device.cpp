@@ -303,36 +303,6 @@ void set_pads_relaxed(bool relaxed)
     }
 }
 
-// The Switch 2 keeps its link in sniff mode (5 ms anchors in play, v0.1.10
-// log) and hangs up if sniff is refused. With the gamepad link in active
-// mode beside it, the console link stalled for ~7 s at a time while the pad
-// kept reporting. So while the console link sniffs, the pads sniff too, at
-// twice its interval, which lets the radio plan both links ahead.
-uint16_t s_console_sniff;  // console link's sniff interval in slots, 0 = active
-
-void pad_sniff(hci_con_handle_t handle)
-{
-    if (s_console_sniff != 0) {
-        const uint16_t iv = uint16_t(s_console_sniff * 2);
-        gap_sniff_mode_enter(handle, iv, iv, 4, 1);
-    } else {
-        gap_sniff_mode_exit(handle);
-    }
-}
-
-void set_console_sniff(uint16_t slots)
-{
-    if (slots == s_console_sniff) {
-        return;
-    }
-    s_console_sniff = slots;
-    for (auto h : s_pads) {
-        if (h != HCI_CON_HANDLE_INVALID) {
-            pad_sniff(h);
-        }
-    }
-}
-
 void qos_failed(hci_con_handle_t handle, uint8_t status)
 {
     if (s_qos_inflight_type == kQosGuaranteed) {
@@ -372,11 +342,18 @@ void report_timer_stop()
 // log shows whether the console link or the controller froze.
 uint32_t s_blocked_ticks;
 uint32_t s_longest_block_ms;
+// Packets the console sent us while our reports were blocked: tells whether
+// the console stopped talking too (it stopped polling) or only we can't send.
+uint32_t s_rx_in_block;
+uint32_t s_last_block_rx;
 constexpr uint32_t kBlockLogMs = 300;
 
 void note_blocked()
 {
     const uint32_t before = s_blocked_ticks * s_profile->report_period_ms;
+    if (s_blocked_ticks == 0) {
+        s_rx_in_block = 0;
+    }
     s_blocked_ticks++;
     if (before < kBlockLogMs && s_blocked_ticks * s_profile->report_period_ms >= kBlockLogMs) {
         ESP_LOGW(TAG, "Console link blocked: no input report sent for %u ms", unsigned(kBlockLogMs));
@@ -388,7 +365,9 @@ void note_sent()
     const uint32_t ms = s_blocked_ticks * s_profile->report_period_ms;
     s_blocked_ticks = 0;
     if (ms >= kBlockLogMs) {
-        ESP_LOGW(TAG, "Console link moving again after ~%u ms", unsigned(ms));
+        s_last_block_rx = s_rx_in_block;
+        ESP_LOGW(TAG, "Console link moving again after ~%u ms (console sent %u packets meanwhile)", unsigned(ms),
+                 unsigned(s_rx_in_block));
     }
     if (ms > s_longest_block_ms) {
         s_longest_block_ms = ms;
@@ -469,7 +448,6 @@ void release_link()
     report_timer_stop();
     btstack_run_loop_remove_timer(&s_connect_watchdog);
     restore_page_settings();
-    set_console_sniff(0);
     set_pads_relaxed(false);
     write_pending_key();
     if (was_up) {
@@ -669,6 +647,7 @@ void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint1
 {
     if (packet_type == L2CAP_DATA_PACKET) {
         if (is_our_cid(channel)) {
+            s_rx_in_block++;
             handle_hid(channel, packet, size);
         } else {
             forward(packet_type, channel, packet, size);
@@ -1070,20 +1049,21 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
                      unsigned(hci_event_mode_change_get_mode(packet)),
                      unsigned(hci_event_mode_change_get_status(packet)),
                      unsigned(hci_event_mode_change_get_interval(packet)));
-            if (hci_event_mode_change_get_status(packet) == ERROR_CODE_SUCCESS && s_profile->console_master) {
-                set_console_sniff(hci_event_mode_change_get_mode(packet) == 2  // sniff
-                                      ? hci_event_mode_change_get_interval(packet)
-                                      : 0);
-            }
-        } else {
-            for (auto h : s_pads) {
-                if (h != HCI_CON_HANDLE_INVALID && h == hci_event_mode_change_get_handle(packet)) {
-                    ESP_LOGI(TAG, "Gamepad link mode %u (status 0x%02x, interval %u slots)",
-                             unsigned(hci_event_mode_change_get_mode(packet)),
-                             unsigned(hci_event_mode_change_get_status(packet)),
-                             unsigned(hci_event_mode_change_get_interval(packet)));
-                }
-            }
+        }
+        break;
+    case HCI_EVENT_ENCRYPTION_CHANGE:
+        if (s_link_handle != HCI_CON_HANDLE_INVALID &&
+            hci_event_encryption_change_get_connection_handle(packet) == s_link_handle) {
+            ESP_LOGI(TAG, "Console link encryption %u (status 0x%02x)",
+                     unsigned(hci_event_encryption_change_get_encryption_enabled(packet)),
+                     unsigned(hci_event_encryption_change_get_status(packet)));
+        }
+        break;
+    case HCI_EVENT_ENCRYPTION_KEY_REFRESH_COMPLETE:
+        if (s_link_handle != HCI_CON_HANDLE_INVALID &&
+            hci_event_encryption_key_refresh_complete_get_handle(packet) == s_link_handle) {
+            ESP_LOGI(TAG, "Console link key refresh (status 0x%02x)",
+                     unsigned(hci_event_encryption_key_refresh_complete_get_status(packet)));
         }
         break;
     case HCI_EVENT_ROLE_CHANGE: {
@@ -1240,6 +1220,7 @@ void forget() { forget_host(); }
 bool link_is_master() { return s_link_up && s_link_master; }
 uint8_t last_disconnect_reason() { return s_last_reason; }
 uint32_t longest_block_ms() { return s_longest_block_ms; }
+uint32_t last_block_rx() { return s_last_block_rx; }
 void flush() { send_reports(false); }
 
 void tune_link(hci_con_handle_t handle, const bd_addr_t addr)
@@ -1256,9 +1237,6 @@ void tune_link(hci_con_handle_t handle, const bd_addr_t addr)
         (s_pads[0] == HCI_CON_HANDLE_INVALID ? s_pads[0] : s_pads[1]) = handle;
     }
     tune_pad_qos(handle);
-    if (s_console_sniff != 0) {
-        pad_sniff(handle);
-    }
 }
 
 void local_address(bd_addr_t out) { gap_local_bd_addr(out); }
