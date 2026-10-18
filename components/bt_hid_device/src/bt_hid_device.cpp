@@ -983,9 +983,11 @@ int connection_filter(bd_addr_t addr, hci_link_type_t link_type)
         const bool known_console = s_have_host && addr_eq(addr, s_host_addr);
         const bool has_key = gap_get_link_key_for_bd_addr(addr, key, &type);
         // The console stays master of a link it opened; gamepads get "become
-        // master" as Bluepad32 asks; unknown devices while syncing may be
-        // the console.
-        const bool slave = known_console || (!has_key && s_sync_active);
+        // master" as Bluepad32 asks, unless the console must stay master
+        // (then they lead, see tune_link); unknown devices while syncing may
+        // be the console.
+        const bool slave = known_console || (!has_key && s_sync_active) ||
+                           (s_profile && s_profile->console_master);
         hci_set_master_slave_policy(slave ? HCI_ROLE_SLAVE : HCI_ROLE_MASTER);
     }
     return 1;
@@ -1123,6 +1125,9 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
     case HCI_EVENT_ROLE_CHANGE: {
         bd_addr_t addr;
         hci_event_role_change_get_bd_addr(packet, addr);
+        ESP_LOGI(TAG, "Role change %s: %s (status 0x%02x)", is_link_addr(addr) ? "console" : "gamepad",
+                 hci_event_role_change_get_role(packet) == HCI_ROLE_MASTER ? "we lead" : "it leads",
+                 unsigned(hci_event_role_change_get_status(packet)));
         if (is_link_addr(addr) && hci_event_role_change_get_status(packet) == ERROR_CODE_SUCCESS) {
             s_link_master = hci_event_role_change_get_role(packet) == HCI_ROLE_MASTER;
             set_pads_relaxed(!s_link_master);
@@ -1283,8 +1288,11 @@ void tune_link(hci_con_handle_t handle, const bd_addr_t addr)
         (s_link_claimed && handle == s_link_handle)) {
         return;
     }
-    if (gap_get_role(handle) == HCI_ROLE_SLAVE) {
-        gap_request_role(addr, HCI_ROLE_MASTER);
+    // Next to a console that stays master (Switch 2), the gamepad leads its
+    // own link too, so the ESP32 keeps no piconet clock of its own (v0.1.23).
+    const hci_role_t want = s_profile->console_master ? HCI_ROLE_SLAVE : HCI_ROLE_MASTER;
+    if (gap_get_role(handle) != want) {
+        gap_request_role(addr, want);
     }
     ESP_LOGI(TAG, "Gamepad link 0x%04x tuned (%s)", unsigned(handle), s_pads_relaxed ? "relaxed" : "fast");
     queue_policy(handle, LM_LINK_POLICY_ENABLE_ROLE_SWITCH);

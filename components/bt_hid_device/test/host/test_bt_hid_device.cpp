@@ -102,7 +102,8 @@ uint8_t gap_disconnect(hci_con_handle_t) { g_disconnects++; return 0; }
 gap_connection_type_t gap_get_connection_type(hci_con_handle_t) { return GAP_CONNECTION_ACL; }
 hci_role_t gap_get_role(hci_con_handle_t) { return HCI_ROLE_SLAVE; }
 static int g_role_requests;
-uint8_t gap_request_role(const bd_addr_t, hci_role_t) { g_role_requests++; return 0; }
+static hci_role_t g_role_wanted;
+uint8_t gap_request_role(const bd_addr_t, hci_role_t r) { g_role_requests++; g_role_wanted = r; return 0; }
 void gap_local_bd_addr(bd_addr_t a) { std::memset(a, 0x11, 6); }
 
 static btstack_packet_handler_t g_services[2];
@@ -485,7 +486,7 @@ static void test_qos_one_at_a_time()
     g_cmds.clear();
     tune_link(0x0050, PAD);
     tune_link(0x0051, PAD2);
-    CHECK(g_role_requests == 2);
+    CHECK(g_role_requests == 2 && g_role_wanted == HCI_ROLE_MASTER);
     CHECK(count_cmd(&hci_change_connection_packet_type) == 0);  // not for a Switch 1 or Wii U
     CHECK(count_cmd(&hci_qos_setup) == 1);
     ev_qos_complete(0x0051, 0);  // queue is LIFO: 0x0051 went first
@@ -557,8 +558,13 @@ static void test_pads_never_sniff()
     while (s_qos_inflight != HCI_CON_HANDLE_INVALID) {
         ev_qos_complete(s_qos_inflight, 0);
     }
+    // The gamepad paged us and leads; we stay its slave (no own piconet).
+    ev_conn_request(PAD, 0x002508);
+    CHECK(g_policy == HCI_ROLE_SLAVE);
     g_cmds.clear();
+    const int roles = g_role_requests;
     tune_link(0x0053, PAD);
+    CHECK(g_role_requests == roles);
     CHECK(g_policy_handle == 0x0053 && g_policy_bits == LM_LINK_POLICY_ENABLE_ROLE_SWITCH);
     // One-slot packets only: no 3- or 5-slot types, EDR 1-slot types allowed.
     CHECK(count_cmd(&hci_change_connection_packet_type) == 1 && g_ptype_bits == 0x3318);
