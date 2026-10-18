@@ -15,7 +15,7 @@ struct FakeBt {
     const bthid::Profile *profile = nullptr;
     bthid::Listener *listener = nullptr;
     btstack_packet_handler_t fallback = nullptr;
-    bool host = false, connecting = false, connected = false, syncing = false, master = true;
+    bool host = false, connecting = false, connected = false, syncing = false, master = true, connectable = true;
     uint8_t reason = 0;
     int connect_calls = 0, disconnect_calls = 0, sync_calls = 0, forget_calls = 0, tune_calls = 0;
 } g_bt;
@@ -52,6 +52,7 @@ bool link_is_master() { return g_bt.connected && g_bt.master; }
 uint8_t last_disconnect_reason() { return g_bt.reason; }
 void flush() {}
 void tune_link(hci_con_handle_t, const bd_addr_t) { g_bt.tune_calls++; }
+void set_connectable(bool on) { g_bt.connectable = on; }
 void local_address(bd_addr_t out)
 {
     for (int i = 0; i < 6; i++) {
@@ -236,6 +237,8 @@ static void test_switch2_console_first()
 {
     SwitchTarget *t = make(true, SwitchTarget::Model::Switch2);
     CHECK(g_bt.connect_calls == 1 && !t->may_scan());  // paged at start, no controller
+    advance(*t, 20);
+    CHECK(!g_bt.connectable);
     link_up(*t, false);
     CHECK(g_bt.disconnect_calls == 0 && t->connected() && !t->may_scan());
     handshake(*t);
@@ -243,11 +246,14 @@ static void test_switch2_console_first()
     CHECK(!t->may_scan());
     advance(*t, 1100);
     CHECK(t->may_scan());  // setup done: look for the controller
+    advance(*t, 20);
+    CHECK(g_bt.connectable);
     t->on_input_ready(classic_link());
     CHECK(g_bt.connect_calls == 1 && g_bt.tune_calls == 1);
     t->on_input_gone();
     CHECK(g_bt.disconnect_calls == 0 && t->connected());  // console kept
     link_down(*t, 0x13);
+    CHECK(!t->may_scan());  // already when the app hears of the drop
     advance(*t, 300);
     CHECK(g_bt.connect_calls == 2 && !t->may_scan());  // paging it back
     g_bt.connecting = false;

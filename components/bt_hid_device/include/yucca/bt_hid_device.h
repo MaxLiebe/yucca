@@ -80,6 +80,8 @@ uint32_t last_block_rx();
 void flush();
 // For a gamepad link: ESP32 master, no sniff, short poll interval.
 void tune_link(hci_con_handle_t handle, const bd_addr_t addr);
+// Whether gamepads may page us (page scan). Always on while syncing.
+void set_connectable(bool on);
 // Our Bluetooth address (valid once the radio is on).
 void local_address(bd_addr_t out);
 
