@@ -153,7 +153,7 @@ uni_error_t platform_on_device_ready(uni_hid_device_t *d)
     ESP_LOGI(TAG, "Gamepad ready: %s, %s (%s, %s)", d->name, uni_gamepad_get_model_name(d->controller_type),
              bd_addr_to_str(d->conn.btaddr), d->conn.protocol == UNI_BT_CONN_PROTOCOL_BLE ? "BLE" : "Classic");
     InputLink link;
-    link.classic = d->conn.protocol == UNI_BT_CONN_PROTOCOL_BR_EDR;
+    link.classic = bp32::is_classic(d->conn.protocol, UNI_BT_CONN_PROTOCOL_BLE);
     link.handle = d->conn.handle;
     std::memcpy(link.addr, d->conn.btaddr, sizeof(link.addr));
     // The listener tunes the link first; output reports come after.
