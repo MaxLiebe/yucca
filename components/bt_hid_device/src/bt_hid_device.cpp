@@ -266,6 +266,7 @@ void pump()
         const SniffCmd c = s_sniff_q[0];
         s_sniff_q[0] = s_sniff_q[1];
         s_sniff_count--;
+        ESP_LOGI(TAG, "Gamepad 0x%04x: %s sniff", unsigned(c.handle), c.enter ? "entering" : "leaving");
         if (c.enter) {
             hci_send_cmd(&hci_sniff_mode, c.handle, kPadSniffSlots, kPadSniffSlots, kPadSniffAttempt,
                          kPadSniffTimeout);
