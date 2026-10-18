@@ -78,6 +78,12 @@ uint32_t longest_block_ms();
 uint32_t last_block_rx();
 // Send pending replies now instead of at the next report tick.
 void flush();
+
+// Experimental: put gamepad links in sniff at this many slots (0: never).
+// Applies to links tuned afterwards.
+void set_pad_sniff(uint16_t slots);
+// Disconnect every tuned gamepad link (a paired one reconnects by paging us).
+void drop_pads();
 // For a gamepad link: ESP32 master, no sniff, short poll interval.
 void tune_link(hci_con_handle_t handle, const bd_addr_t addr);
 // Whether gamepads may page us (page scan). Always on while syncing.

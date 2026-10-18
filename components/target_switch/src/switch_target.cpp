@@ -131,6 +131,9 @@ void SwitchTarget::begin(TargetListener &listener, Settings &settings)
     static bthid::Profile profile;
     profile = make_profile(model_);
     bthid::set_fallback_handler(fallback_);
+    if (console_first()) {
+        bthid::set_pad_sniff(uint16_t(settings.get_int("sw2_pad_sniff", 0)));
+    }
     bthid::begin(profile, *this);
 
     if (bthid::has_host()) {
@@ -517,6 +520,13 @@ void SwitchTarget::on_link(bool up)
             auto_next_page_ms_ = now_ + kRepageDelayMs;
         }
     } else if (!ours && (input_present_ || console_first()) && was_up) {
+        if (console_first() && input_present_) {
+            // The Switch 2 only sets up a link with no gamepad link beside it
+            // (v0.1.18, v0.1.23): reconnect it alone, the controller after.
+            ESP_LOGI(TAG, "Dropping the controller so the %s reconnects alone; press its PS/Home button after",
+                     name());
+            bthid::drop_pads();
+        }
         auto_reconnect_until_ms_ =
             now_ + (reason == kReasonPowerOff ? kAutoReconnectPowerOffMs : kAutoReconnectWindowMs);
         auto_next_page_ms_ = now_ + kAutoReconnectFirstMs;
