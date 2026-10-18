@@ -35,6 +35,14 @@ constexpr uint8_t kQosGuaranteed = 0x02;
 // this rarely: a 1.25 ms poll starved the console's link on a Switch 2 for
 // 40 s at a time.
 constexpr uint32_t kQosRelaxedUs = 10000;
+// A Switch 2 (console_master) is our master and keeps its link in sniff;
+// its link went silent for seconds whenever the gamepad link beside it was
+// active (every log through v0.1.12). So while it is master, gamepads sniff
+// too: the radio then serves both links at planned anchors. 12 slots
+// (7.5 ms) still delivers 133 reports a second.
+constexpr uint16_t kPadSniffSlots = 12;
+constexpr uint16_t kPadSniffAttempt = 2;
+constexpr uint16_t kPadSniffTimeout = 1;
 
 const Profile *s_profile;
 Listener *s_listener;
@@ -149,6 +157,11 @@ uint32_t s_qos_inflight_latency;
 // for a console link where the ESP32 is slave.
 hci_con_handle_t s_pads[2] = {HCI_CON_HANDLE_INVALID, HCI_CON_HANDLE_INVALID};
 bool s_pads_relaxed;
+struct SniffCmd {
+    hci_con_handle_t handle;
+    bool enter;
+} s_sniff_q[2];
+int s_sniff_count;
 
 void l2cap_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 void connect_watchdog_cb(btstack_timer_source_t *);
@@ -248,6 +261,17 @@ void pump()
         s_policy_count--;
         hci_send_cmd(&hci_write_link_policy_settings, s_policy_q[s_policy_count].handle,
                      s_policy_q[s_policy_count].policy);
+    } else if (s_sniff_count > 0) {
+        // After the policies: a pad's policy must allow sniff first.
+        const SniffCmd c = s_sniff_q[0];
+        s_sniff_q[0] = s_sniff_q[1];
+        s_sniff_count--;
+        if (c.enter) {
+            hci_send_cmd(&hci_sniff_mode, c.handle, kPadSniffSlots, kPadSniffSlots, kPadSniffAttempt,
+                         kPadSniffTimeout);
+        } else {
+            hci_send_cmd(&hci_exit_sniff_mode, c.handle);
+        }
     } else if (s_qos_count > 0 && s_qos_inflight == HCI_CON_HANDLE_INVALID) {
         s_qos_count--;
         s_qos_inflight = s_qos_q[s_qos_count].handle;
@@ -280,6 +304,26 @@ void queue_qos(hci_con_handle_t handle, uint8_t type, uint32_t latency_us = kQos
     pump();
 }
 
+// One pending sniff command per pad; a newer one replaces it.
+void pad_sniff(hci_con_handle_t handle, bool enter)
+{
+    if (!s_profile->console_master) {
+        return;
+    }
+    int i = 0;
+    while (i < s_sniff_count && s_sniff_q[i].handle != handle) {
+        i++;
+    }
+    if (i == 2) {
+        return;
+    }
+    s_sniff_q[i] = {handle, enter};
+    if (i == s_sniff_count) {
+        s_sniff_count++;
+    }
+    pump();
+}
+
 // Fast polling for the gamepads, or relaxed while the console is our master.
 void tune_pad_qos(hci_con_handle_t handle)
 {
@@ -299,6 +343,7 @@ void set_pads_relaxed(bool relaxed)
     for (auto h : s_pads) {
         if (h != HCI_CON_HANDLE_INVALID) {
             tune_pad_qos(h);
+            pad_sniff(h, relaxed);
         }
     }
 }
@@ -978,6 +1023,10 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
             s_qos_inflight = HCI_CON_HANDLE_INVALID;
             qos_failed(h, hci_event_command_status_get_status(packet));
         }
+        if (hci_event_command_status_get_command_opcode(packet) == HCI_OPCODE_HCI_SNIFF_MODE &&
+            hci_event_command_status_get_status(packet) != ERROR_CODE_SUCCESS) {
+            ESP_LOGW(TAG, "Gamepad sniff refused (0x%02x)", unsigned(hci_event_command_status_get_status(packet)));
+        }
         break;
     case HCI_EVENT_QOS_SETUP_COMPLETE:
         if (size >= 5) {
@@ -1049,6 +1098,15 @@ void hci_handler(uint8_t packet_type, uint16_t, uint8_t *packet, uint16_t size)
                      unsigned(hci_event_mode_change_get_mode(packet)),
                      unsigned(hci_event_mode_change_get_status(packet)),
                      unsigned(hci_event_mode_change_get_interval(packet)));
+        } else {
+            for (auto h : s_pads) {
+                if (h != HCI_CON_HANDLE_INVALID && h == hci_event_mode_change_get_handle(packet)) {
+                    ESP_LOGI(TAG, "Gamepad link mode %u (status 0x%02x, interval %u slots)",
+                             unsigned(hci_event_mode_change_get_mode(packet)),
+                             unsigned(hci_event_mode_change_get_status(packet)),
+                             unsigned(hci_event_mode_change_get_interval(packet)));
+                }
+            }
         }
         break;
     case HCI_EVENT_ENCRYPTION_CHANGE:
@@ -1232,11 +1290,15 @@ void tune_link(hci_con_handle_t handle, const bd_addr_t addr)
     if (gap_get_role(handle) == HCI_ROLE_SLAVE) {
         gap_request_role(addr, HCI_ROLE_MASTER);
     }
-    queue_policy(handle, LM_LINK_POLICY_ENABLE_ROLE_SWITCH);
+    queue_policy(handle, LM_LINK_POLICY_ENABLE_ROLE_SWITCH |
+                             (s_profile->console_master ? LM_LINK_POLICY_ENABLE_SNIFF_MODE : 0));
     if (s_pads[0] != handle && s_pads[1] != handle) {
         (s_pads[0] == HCI_CON_HANDLE_INVALID ? s_pads[0] : s_pads[1]) = handle;
     }
     tune_pad_qos(handle);
+    if (s_pads_relaxed) {
+        pad_sniff(handle, true);
+    }
 }
 
 void local_address(bd_addr_t out) { gap_local_bd_addr(out); }

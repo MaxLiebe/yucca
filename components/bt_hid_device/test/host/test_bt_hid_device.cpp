@@ -22,9 +22,18 @@ bool hci_can_send_command_packet_now(void) { return true; }
 static std::vector<const hci_cmd_t *> g_cmds;
 const hci_cmd_t hci_write_link_policy_settings = {};
 static int g_policy_handle = -1, g_policy_bits = -1;  // last link policy written
+const hci_cmd_t hci_sniff_mode = {};
+const hci_cmd_t hci_exit_sniff_mode = {};
+static int g_sniff_handle = -1;  // last sniff enter/exit target
 uint8_t hci_send_cmd(const hci_cmd_t *cmd, ...)
 {
     g_cmds.push_back(cmd);
+    if (cmd == &hci_sniff_mode || cmd == &hci_exit_sniff_mode) {
+        va_list ap;
+        va_start(ap, cmd);
+        g_sniff_handle = va_arg(ap, int);
+        va_end(ap);
+    }
     if (cmd == &hci_write_link_policy_settings) {
         va_list ap;
         va_start(ap, cmd);
@@ -527,6 +536,37 @@ static void test_console_master_page()
     begin(kProfile, g_listener);
 }
 
+// Switch 2: while it is master, gamepads sniff (and the policy allows it).
+static void test_pads_sniff_while_switch2_master()
+{
+    Profile p2 = kProfile;
+    p2.console_master = true;
+    begin(p2, g_listener);
+    while (s_qos_inflight != HCI_CON_HANDLE_INVALID) {
+        ev_qos_complete(s_qos_inflight, 0);
+    }
+    g_cmds.clear();
+    tune_link(0x0053, PAD);
+    CHECK(g_policy_handle == 0x0053 &&
+          g_policy_bits == (LM_LINK_POLICY_ENABLE_ROLE_SWITCH | LM_LINK_POLICY_ENABLE_SNIFF_MODE));
+    CHECK(count_cmd(&hci_sniff_mode) == 0);  // no console yet: full speed
+
+    sync();
+    g_have_key = false;
+    ev_conn_request(SWITCH, 0x000000);
+    ev_conn_complete(SWITCH, 0x0091, 0);  // it paged us: it is master
+    CHECK(s_pads_relaxed && count_cmd(&hci_sniff_mode) == 1 && g_sniff_handle == 0x0053);
+
+    ev_disconnect(0x0091, 0x13);
+    CHECK(count_cmd(&hci_exit_sniff_mode) == 1 && g_sniff_handle == 0x0053);
+    ev_disconnect(0x0053, 0x13);
+    end_sync(true);
+    while (s_qos_inflight != HCI_CON_HANDLE_INVALID) {
+        ev_qos_complete(s_qos_inflight, 0);
+    }
+    begin(kProfile, g_listener);
+}
+
 // The console's link key is kept even when BTstack would not store it.
 static void test_console_link_key_stored()
 {
@@ -666,6 +706,7 @@ int main(int argc, char **)
     RUN(test_disconnect_while_paging);
     RUN(test_qos_one_at_a_time);
     RUN(test_pads_relaxed_while_slave);
+    RUN(test_pads_sniff_while_switch2_master);
     RUN(test_console_master_page);
     RUN(test_console_link_key_stored);
     RUN(test_held_channels);
