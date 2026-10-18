@@ -42,7 +42,8 @@ struct FakeTarget : Target {
     void set_fallback_handler(PacketHandler) override {}
     void begin(TargetListener &l, Settings &) override { listener = &l; }
     bool has_paired_console() const override { return true; }
-    bool connected() const override { return false; }
+    bool is_connected = false;
+    bool connected() const override { return is_connected; }
     bool syncing() const override { return is_syncing; }
     void start_sync() override
     {
@@ -106,6 +107,19 @@ static void test_no_scan_while_console_syncs()
     CHECK(!r.input.scanning);
     r.target.is_syncing = false;
     r.app.on_target_sync_changed(false);
+    CHECK(r.input.scanning);
+}
+
+// No inquiry while the console link is up, even with no controller.
+static void test_no_scan_while_console_connected()
+{
+    Rig r;
+    CHECK(r.input.scanning);
+    r.target.is_connected = true;
+    r.app.on_target_connected();
+    CHECK(!r.input.scanning);
+    r.target.is_connected = false;
+    r.app.on_target_disconnected();
     CHECK(r.input.scanning);
 }
 
@@ -303,6 +317,7 @@ int main()
     RUN(test_combo_waits_for_open_sync_window);
     RUN(test_scans_until_controller_ready);
     RUN(test_no_scan_while_console_syncs);
+    RUN(test_no_scan_while_console_connected);
     RUN(test_select_start_hold_syncs_once);
     RUN(test_boot_tap_syncs_and_hold_forgets);
     RUN(test_feedback_reaches_controller);

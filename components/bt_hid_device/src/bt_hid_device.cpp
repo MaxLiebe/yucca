@@ -531,12 +531,12 @@ void on_channels_up()
     s_link_up = true;
     s_blocked_ticks = 0;
     store_host(s_link_addr);
-    end_sync(true);
     btstack_run_loop_remove_timer(&s_connect_watchdog);
     ESP_LOGI(TAG, "Console %s connected (%s, ESP32 %s)", bd_addr_to_str(s_link_addr),
              s_link_outgoing ? "we paged it" : "it paged us", s_link_master ? "master" : "slave");
     report_timer_start();
     s_listener->on_link(true);
+    end_sync(true);  // after on_link: the app sees "connected" when syncing ends
 }
 
 // A channel to the console without authenticating first: the console starts
