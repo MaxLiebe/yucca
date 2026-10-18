@@ -357,7 +357,12 @@ void SwitchTarget::on_output(const uint8_t *report, size_t len)
             reply_count_--;
         }
         std::memcpy(replies_[reply_count_++], reply, sizeof(reply));
-        ESP_LOGI(TAG, "Subcommand 0x%02x", proto_->last_subcommand());
+        if (proto_->last_subcommand() == 0x10) {
+            ESP_LOGI(TAG, "Subcommand 0x10: SPI 0x%04x, %u bytes", unsigned(reply[15] | reply[16] << 8),
+                     unsigned(reply[19]));
+        } else {
+            ESP_LOGI(TAG, "Subcommand 0x%02x", proto_->last_subcommand());
+        }
     }
     send_feedback();
 }
