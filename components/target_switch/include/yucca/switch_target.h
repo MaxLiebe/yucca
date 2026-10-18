@@ -32,6 +32,7 @@ public:
     bool has_paired_console() const override;
     bool connected() const override { return connected_; }
     bool syncing() const override { return syncing_; }
+    bool may_scan() const override;
 
     void start_sync() override;
     void forget() override;
@@ -51,6 +52,9 @@ public:
     SwitchTarget();
 
 private:
+    // Switch 2: connect to the console before the controller. Its setup
+    // fails while a controller link exists (docs/platforms/switch.md 9).
+    bool console_first() const { return model_ == Model::Switch2; }
     void try_connect(const char *why);
     void send_feedback();
     void hang_up();
@@ -74,6 +78,7 @@ private:
     bool console_only_ = false;
     bool connected_ = false;
     bool syncing_ = false;
+    bool started_ = false;
     bool we_dropped_ = false;
     int64_t last_connect_ms_;
     int64_t last_report_ms_ = 0;

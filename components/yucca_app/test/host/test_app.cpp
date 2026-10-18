@@ -45,6 +45,8 @@ struct FakeTarget : Target {
     bool is_connected = false;
     bool connected() const override { return is_connected; }
     bool syncing() const override { return is_syncing; }
+    int scan_ok = -1;  // -1: Target's default
+    bool may_scan() const override { return scan_ok < 0 ? Target::may_scan() : scan_ok == 1; }
     void start_sync() override
     {
         syncs++;
@@ -121,6 +123,24 @@ static void test_no_scan_while_console_connected()
     r.target.is_connected = false;
     r.app.on_target_disconnected();
     CHECK(r.input.scanning);
+}
+
+// The target decides when to look for controllers, and that can change with time.
+static void test_scan_follows_target()
+{
+    Rig r;
+    r.target.is_connected = true;
+    r.target.scan_ok = 1;
+    r.app.on_target_connected();
+    CHECK(r.input.scanning);
+    r.target.scan_ok = 0;
+    r.run(20);
+    CHECK(!r.input.scanning);
+    r.target.scan_ok = 1;
+    r.run(20);
+    CHECK(r.input.scanning);
+    r.controller_ready();
+    CHECK(!r.input.scanning);
 }
 
 static void test_select_start_hold_syncs_once()
@@ -318,6 +338,7 @@ int main()
     RUN(test_scans_until_controller_ready);
     RUN(test_no_scan_while_console_syncs);
     RUN(test_no_scan_while_console_connected);
+    RUN(test_scan_follows_target);
     RUN(test_select_start_hold_syncs_once);
     RUN(test_boot_tap_syncs_and_hold_forgets);
     RUN(test_feedback_reaches_controller);

@@ -45,6 +45,9 @@ public:
     virtual bool has_paired_console() const = 0;
     virtual bool connected() const = 0;
     virtual bool syncing() const = 0;
+    // Whether the app may look for new controllers now: an inquiry takes the
+    // radio from the console link for seconds.
+    virtual bool may_scan() const { return !syncing() && !connected(); }
 
     virtual void start_sync() = 0;
     virtual void forget() = 0;

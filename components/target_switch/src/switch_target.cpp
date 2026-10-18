@@ -134,6 +134,20 @@ void SwitchTarget::begin(TargetListener &listener, Settings &settings)
 
 bool SwitchTarget::has_paired_console() const { return bthid::has_host(); }
 
+bool SwitchTarget::may_scan() const
+{
+    if (syncing_) {
+        return false;
+    }
+    if (connected_) {
+        // Switch 2: look for the controller once the console has finished
+        // its setup (player lights, then kPairedSettleMs).
+        return console_first() && paired_ms_ >= 0 && now_ - paired_ms_ >= kPairedSettleMs;
+    }
+    // Not while paging the console back.
+    return auto_reconnect_until_ms_ < 0;
+}
+
 void SwitchTarget::start_sync()
 {
     ESP_LOGI(TAG, "Sync: open Controllers > Change Grip/Order on the %s now (%u s)", name(),
@@ -164,7 +178,7 @@ void SwitchTarget::try_connect(const char *why)
     if (connected_ || syncing_ || !bthid::has_host() || bthid::connecting()) {
         return;
     }
-    if (!input_present_) {
+    if (!input_present_ && !console_first()) {
         // Paging the console without a controller would only waste the radio.
         return;
     }
@@ -207,7 +221,9 @@ void SwitchTarget::on_input_gone()
     }
     auto_reconnect_until_ms_ = -1;
     repage_at_ms_ = -1;
-    if (connected_ && !bthid::link_is_master()) {
+    if (connected_ && console_first()) {
+        ESP_LOGI(TAG, "Keeping the %s link; looking for the controller again", name());
+    } else if (connected_ && !bthid::link_is_master()) {
         // As the console's slave the radio starves the controller link, so
         // it could not come back. As master, keep the link: the console
         // simply sees an idle controller until it returns.
@@ -264,6 +280,14 @@ void SwitchTarget::update(const GamepadState &state)
 void SwitchTarget::tick(int64_t now_ms)
 {
     now_ = now_ms;
+    if (!started_) {
+        started_ = true;
+        if (console_first() && bthid::has_host()) {
+            ESP_LOGI(TAG, "Connecting to the %s first, then looking for the controller", name());
+            auto_reconnect_until_ms_ = now_ + kAutoReconnectWindowMs;
+            auto_next_page_ms_ = now_;
+        }
+    }
     if (connected_) {
         send_feedback();  // rumble changes held back by kRumbleGapMs
         if (we_dropped_) {
@@ -297,7 +321,7 @@ void SwitchTarget::tick(int64_t now_ms)
         }
         return;
     }
-    if (!input_present_) {
+    if (!input_present_ && !console_first()) {
         return;
     }
     if (auto_reconnect_until_ms_ >= 0) {
@@ -420,6 +444,8 @@ void SwitchTarget::on_link(bool up)
         auto_reconnect_until_ms_ = -1;
         if (console_only_ && !input_present_) {
             ESP_LOGI(TAG, "No controller: keeping the %s link anyway (console-only test)", name());
+        } else if (console_first() && !input_present_) {
+            ESP_LOGI(TAG, "Keeping the %s link; the controller connects once its setup is done", name());
         } else if (!input_present_) {
             // Never sit on the console link without a controller: as slave it
             // would block the controller. The pairing is stored.
@@ -453,13 +479,13 @@ void SwitchTarget::on_link(bool up)
         // Slave hand-off: page the console as master from now on, with
         // retries (it may still be busy on the grip screen).
         repage_at_ms_ = -1;
-        if (input_present_) {
+        if (input_present_ || console_first()) {
             auto_reconnect_until_ms_ = now_ + kAutoReconnectWindowMs;
             auto_next_page_ms_ = now_ + kRepageDelayMs;
         }
         return;
     }
-    if (ours || !input_present_ || !was_up) {
+    if (ours || (!input_present_ && !console_first()) || !was_up) {
         return;
     }
     auto_reconnect_until_ms_ =
