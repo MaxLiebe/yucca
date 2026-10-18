@@ -24,11 +24,13 @@ void App::begin()
     update_scanning();
 }
 
-// Inquiry for new controllers only when there is none and the console is not
-// syncing. Bonded controllers reconnect by paging us, which needs no inquiry.
+// Inquiry for new controllers only when there is none and the console is
+// neither syncing nor connected: an inquiry takes the radio from the console
+// link for seconds. Bonded controllers reconnect by paging us, which needs no
+// inquiry.
 void App::update_scanning()
 {
-    const bool want = !input_.ready() && !target_.syncing();
+    const bool want = !input_.ready() && !target_.syncing() && !target_.connected();
     if (scanning_known_ && want == scanning_) {
         return;
     }
@@ -157,9 +159,17 @@ void App::on_input_state(const GamepadState &state)
     target_.update(state);
 }
 
-void App::on_target_connected() { ESP_LOGI(TAG, "%s connected", target_.name()); }
+void App::on_target_connected()
+{
+    ESP_LOGI(TAG, "%s connected", target_.name());
+    update_scanning();
+}
 
-void App::on_target_disconnected() { ESP_LOGI(TAG, "%s disconnected", target_.name()); }
+void App::on_target_disconnected()
+{
+    ESP_LOGI(TAG, "%s disconnected", target_.name());
+    update_scanning();
+}
 
 void App::on_target_sync_changed(bool) { update_scanning(); }
 
